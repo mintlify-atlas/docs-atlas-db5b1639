@@ -1,0 +1,132 @@
+---
+title: 'rtk kubectl'
+description: 'Kubernetes commands with compact output'
+---
+
+## Overview
+
+Proxy for `kubectl` with token-optimized output. Compacts pod lists, service tables, and log output.
+
+## Syntax
+
+```bash
+rtk kubectl <SUBCOMMAND> [OPTIONS]
+```
+
+## Subcommands
+
+### rtk kubectl pods
+
+List pods with compact status.
+
+```bash
+rtk kubectl pods [OPTIONS]
+```
+
+<ParamField query="-n, --namespace <name>" type="string">
+  Kubernetes namespace
+</ParamField>
+
+<ParamField query="-A, --all-namespaces" type="flag">
+  List pods across all namespaces
+</ParamField>
+
+**Output:**
+```
+8 pods in default:
+✅ web-deploy-abc123 (2/2) [Running 5h]
+✅ api-deploy-def456 (1/1) [Running 5h]
+🔄 worker-xyz789 (0/1) [CrashLoopBackOff]
+... +5 more
+```
+
+**Token savings: 75%**
+
+### rtk kubectl services
+
+List services with compact networking info.
+
+```bash
+rtk kubectl services [OPTIONS]
+```
+
+**Output:**
+```
+3 services:
+web-svc        LoadBalancer  :80 → nodes:30080
+api-svc        ClusterIP     :3000
+db-svc         ClusterIP     :5432
+```
+
+**Token savings: 70%**
+
+### rtk kubectl logs
+
+Deduplicated pod logs.
+
+```bash
+rtk kubectl logs <POD> [OPTIONS]
+```
+
+<ParamField query="-c, --container <name>" type="string">
+  Container name (for multi-container pods)
+</ParamField>
+
+<ParamField query="-f, --follow" type="flag">
+  Follow log output
+</ParamField>
+
+<ParamField query="--tail <n>" type="number">
+  Number of lines to show
+</ParamField>
+
+**Features:**
+- Deduplicates repeated messages
+- Groups similar log patterns
+- Strips k8s metadata
+
+**Token savings: 80%**
+
+## Examples
+
+### List Pods in Namespace
+
+```bash
+rtk kubectl pods -n production
+```
+
+### View Pod Logs
+
+```bash
+rtk kubectl logs web-deploy-abc123 --tail 100
+```
+
+### List All Services
+
+```bash
+rtk kubectl services --all-namespaces
+```
+
+## Implementation
+
+Source: `src/container.rs`
+
+### Optimizations
+
+- **Status icons**: `✅` Running, `🔄` Pending/CrashLoop, `⏹️` Terminated
+- **Container ratios**: `(2/2)` instead of full Ready/Total columns
+- **Age formatting**: `5h` instead of verbose duration
+- **Port compaction**: `:80→30080` instead of full notation
+
+## Related Commands
+
+- [rtk docker](/api/docker) - Docker operations
+- [rtk log](/api/log) - Log filtering
+
+## Token Savings Summary
+
+| Command | Standard | RTK | Savings |
+|---------|----------|-----|--------|
+| `pods` | ~800 tokens | ~200 tokens | 75% |
+| `services` | ~500 tokens | ~150 tokens | 70% |
+| `logs` | ~2000 tokens | ~400 tokens | 80% |

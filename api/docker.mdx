@@ -1,0 +1,124 @@
+---
+title: 'rtk docker'
+description: 'Docker commands with compact output'
+---
+
+## Overview
+
+Proxy for Docker CLI with token-optimized output. Compacts container lists, image names, and log output.
+
+## Syntax
+
+```bash
+rtk docker <SUBCOMMAND> [OPTIONS]
+```
+
+## Subcommands
+
+### rtk docker ps
+
+List containers with compact output.
+
+```bash
+rtk docker ps [OPTIONS]
+```
+
+<ParamField query="-a, --all" type="flag">
+  Show all containers (default shows just running)
+</ParamField>
+
+**Output:**
+```
+3 containers (2 running):
+✅ web (nginx:latest) :80→8080 [10h]
+✅ api (node:18) :3000→3000 [10h]
+⏹️  db (postgres:15) [stopped]
+```
+
+**Token savings: 70%**
+
+### rtk docker images
+
+List images with shortened names.
+
+```bash
+rtk docker images [OPTIONS]
+```
+
+**Output:**
+```
+5 images (total: 2.1GB):
+nginx:latest      142MB   [2 days ago]
+node:18-alpine    165MB   [1 week ago]
+postgres:15       379MB   [2 weeks ago]
+... +2 more
+```
+
+**Token savings: 65%**
+
+### rtk docker logs
+
+Deduplicated log output.
+
+```bash
+rtk docker logs <CONTAINER> [OPTIONS]
+```
+
+<ParamField query="-f, --follow" type="flag">
+  Follow log output
+</ParamField>
+
+<ParamField query="--tail <n>" type="number">
+  Number of lines to show from end
+</ParamField>
+
+**Features:**
+- Deduplicates repeated log lines (shows count)
+- Strips timestamps and container IDs
+- Groups similar messages
+
+**Token savings: 80%**
+
+## Examples
+
+### List Running Containers
+
+```bash
+rtk docker ps
+```
+
+### View Recent Logs
+
+```bash
+rtk docker logs my-container --tail 50
+```
+
+### List All Images
+
+```bash
+rtk docker images
+```
+
+## Implementation
+
+Source: `src/container.rs`
+
+### Optimizations
+
+- **Port compaction**: `:8080→80` instead of full `0.0.0.0:8080->80/tcp`
+- **Image shortening**: `nginx:latest` instead of full SHA
+- **Status icons**: `✅` running, `⏹️` stopped, `🔄` restarting
+- **Time formatting**: `10h` instead of verbose timestamps
+
+## Related Commands
+
+- [rtk kubectl](/api/kubectl) - Kubernetes operations
+- [rtk log](/api/log) - Log filtering
+
+## Token Savings Summary
+
+| Command | Standard | RTK | Savings |
+|---------|----------|-----|--------|
+| `ps` | ~600 tokens | ~180 tokens | 70% |
+| `images` | ~450 tokens | ~160 tokens | 65% |
+| `logs` | ~2000 tokens | ~400 tokens | 80% |

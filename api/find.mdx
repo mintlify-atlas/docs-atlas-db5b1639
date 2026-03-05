@@ -1,0 +1,96 @@
+---
+title: 'rtk find'
+description: 'Gitignore-aware file search with compact output'
+---
+
+## Overview
+
+Find files with intelligent filtering and gitignore support. Produces compact tree-style output instead of verbose line-by-line results.
+
+## Syntax
+
+```bash
+rtk find [OPTIONS] [PATH] [EXPRESSION]
+```
+
+## Options
+
+Supports both RTK-specific and native `find` syntax:
+
+<ParamField query="pattern" type="string">
+  Glob pattern to match (e.g., `*.rs`, `test_*.py`)
+</ParamField>
+
+<ParamField query="path" type="string" default=".">
+  Directory to search in
+</ParamField>
+
+<ParamField query="-name <pattern>" type="string">
+  Native find: match filename pattern
+</ParamField>
+
+<ParamField query="-type <type>" type="string">
+  Native find: file type (f=file, d=directory)
+</ParamField>
+
+<ParamField query="-maxdepth <n>" type="number">
+  Native find: maximum search depth
+</ParamField>
+
+## Examples
+
+### Find by Pattern
+
+```bash
+rtk find "*.rs"
+```
+
+**Output:**
+```
+Found 42 files:
+src/
+  main.rs
+  lib.rs
+  utils.rs
+tests/
+  integration.rs
+  unit.rs
+... +37 more
+```
+
+### Find with Native Syntax
+
+```bash
+rtk find . -name "test_*.py" -type f
+```
+
+### Limit Depth
+
+```bash
+rtk find "*.md" . -maxdepth 2
+```
+
+## Features
+
+- **Gitignore-aware**: Automatically skips files in `.gitignore`
+- **Grouped output**: Files organized by directory
+- **Truncation**: Large result sets show summary with file count
+- **Dual syntax**: Supports both simple glob patterns and native find flags
+
+## Token Savings
+
+Average token reduction: **80%**
+
+For large projects with 1000+ matches, shows first 50 files + count summary instead of full list.
+
+## Related Commands
+
+- [rtk ls](/api/ls) - Directory listing
+- [rtk grep](/api/grep) - Content search
+- [rtk tree](/api/tree) - Directory tree
+
+## Implementation
+
+Source: `src/find_cmd.rs`
+
+Uses `ignore` crate for gitignore support and intelligent file traversal.

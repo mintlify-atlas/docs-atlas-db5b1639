@@ -1,0 +1,175 @@
+---
+title: 'rtk cargo'
+description: 'Cargo commands with compact output'
+---
+
+## Overview
+
+Proxy for Cargo (Rust build tool) with token-optimized output. Shows only relevant build information and test failures.
+
+## Syntax
+
+```bash
+rtk cargo <SUBCOMMAND> [OPTIONS]
+```
+
+## Subcommands
+
+### rtk cargo build
+
+Build with minimal output.
+
+```bash
+rtk cargo build [OPTIONS]
+```
+
+<ParamField query="--release" type="flag">
+  Build optimized artifact
+</ParamField>
+
+**Output (success):**
+```
+✓ Compiling rtk v0.24.0
+✓ Finished in 12.3s
+```
+
+**Output (failure):**
+```
+✗ Error in src/main.rs:42:18
+   | expected `;` after expression
+```
+
+**Token savings: 85%**
+
+### rtk cargo test
+
+Run tests, show only failures.
+
+```bash
+rtk cargo test [OPTIONS]
+```
+
+<ParamField query="--" type="separator">
+  Pass additional arguments to test binary
+</ParamField>
+
+**Output (passing):**
+```
+✓ 15/15 tests passed (0.8s)
+```
+
+**Output (failures):**
+```
+✗ 2/15 tests failed:
+
+test_edge_case (src/lib.rs:142)
+  assertion failed: expected 42, got 43
+
+test_overflow (src/utils.rs:89)
+  thread panicked: arithmetic overflow
+```
+
+**Token savings: 90%**
+
+### rtk cargo clippy
+
+Lint with grouped warnings.
+
+```bash
+rtk cargo clippy [OPTIONS]
+```
+
+**Output:**
+```
+⚠️  3 warnings:
+
+src/main.rs (2)
+  L42: unnecessary allocation (clippy::vec_box)
+  L98: variable can be const (clippy::declare_interior_mutable_const)
+
+src/lib.rs (1)
+  L67: this function can be simplified (clippy::needless_return)
+```
+
+**Token savings: 80%**
+
+### rtk cargo check
+
+Type-check without building.
+
+```bash
+rtk cargo check [OPTIONS]
+```
+
+**Output:**
+```
+✓ Check completed in 3.2s
+```
+
+### rtk cargo install
+
+Install binary, show progress summary.
+
+```bash
+rtk cargo install <CRATE>
+```
+
+**Output:**
+```
+✓ Installed rtk v0.24.0
+   Binary: ~/.cargo/bin/rtk
+```
+
+**Token savings: 92%**
+
+## Examples
+
+### Build Release Binary
+
+```bash
+rtk cargo build --release
+```
+
+### Run Tests with Nocapture
+
+```bash
+rtk cargo test -- --nocapture
+```
+
+### Lint All Targets
+
+```bash
+rtk cargo clippy --all-targets
+```
+
+## Features
+
+- **Failures only**: For tests, only shows failed cases with context
+- **Grouped linting**: Clippy warnings grouped by file and rule
+- **Progress stripping**: Removes compilation progress bars
+- **Error context**: Shows file location and relevant code snippet
+
+## Implementation
+
+Source: `src/cargo_cmd.rs`
+
+### Optimizations
+
+- Strips "Compiling (N/M)" progress lines
+- Removes dependency compilation messages
+- Groups similar warnings/errors
+- Formats durations compactly ("3.2s" vs "3.234567s")
+
+## Related Commands
+
+- [rtk test](/api/test) - Generic test runner
+- [rtk lint](/api/lint) - Language-agnostic linting
+
+## Token Savings Summary
+
+| Command | Standard | RTK | Savings |
+|---------|----------|-----|--------|
+| `build` (success) | ~1200 tokens | ~180 tokens | 85% |
+| `test` (passing) | ~3000 tokens | ~300 tokens | 90% |
+| `clippy` | ~2000 tokens | ~400 tokens | 80% |
+| `install` | ~1500 tokens | ~120 tokens | 92% |

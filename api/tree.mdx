@@ -1,0 +1,104 @@
+---
+title: 'rtk tree'
+description: 'Token-optimized directory tree visualization'
+---
+
+## Overview
+
+Proxy for the `tree` command with intelligent output filtering and compaction.
+
+## Syntax
+
+```bash
+rtk tree [OPTIONS] [DIRECTORY]
+```
+
+## Options
+
+All native `tree` flags are supported and passed through:
+
+<ParamField query="-L <level>" type="number">
+  Descend only `level` directories deep
+</ParamField>
+
+<ParamField query="-d" type="flag">
+  List directories only
+</ParamField>
+
+<ParamField query="-a" type="flag">
+  Show all files (including hidden)
+</ParamField>
+
+<ParamField query="-I <pattern>" type="string">
+  Exclude files matching pattern
+</ParamField>
+
+<ParamField query="-P <pattern>" type="string">
+  List only files matching pattern
+</ParamField>
+
+<ParamField query="--gitignore" type="flag">
+  Filter files according to .gitignore
+</ParamField>
+
+## Examples
+
+### Basic Tree
+
+```bash
+rtk tree
+```
+
+**Output:**
+```
+.
+├── src/
+│   ├── main.rs
+│   ├── lib.rs
+│   └── utils.rs
+├── Cargo.toml
+└── README.md
+
+1 directory, 5 files
+```
+
+### Limited Depth
+
+```bash
+rtk tree -L 2
+```
+
+### Directories Only
+
+```bash
+rtk tree -d
+```
+
+**Output:**
+```
+.
+├── src
+├── tests
+└── docs
+
+3 directories
+```
+
+## Features
+
+- **Gitignore-aware**: Automatically respects `.gitignore` patterns
+- **Compact output**: Removes excessive whitespace and formatting
+- **Token-optimized**: Aggregates file counts, truncates deep trees
+
+## Token Savings
+
+Average token reduction: **60%**
+
+## Related Commands
+
+- [rtk ls](/api/ls) - Directory listing
+- [rtk find](/api/find) - File search
+
+## Implementation
+
+Source: `src/tree.rs`

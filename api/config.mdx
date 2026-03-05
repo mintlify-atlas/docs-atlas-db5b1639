@@ -1,0 +1,294 @@
+---
+title: 'rtk config'
+description: 'View and manage RTK configuration'
+---
+
+## Overview
+
+Displays RTK configuration from `~/.config/rtk/config.toml` or creates a default configuration file.
+
+## Syntax
+
+```bash
+rtk config [OPTIONS]
+```
+
+## Options
+
+<ParamField query="--create" type="flag">
+  Create default configuration file at `~/.config/rtk/config.toml`
+</ParamField>
+
+## Configuration File
+
+**Location:** `~/.config/rtk/config.toml`
+
+### Default Configuration
+
+```toml
+[tracking]
+enabled = true
+history_days = 90
+# Optional: custom database path
+# database_path = "/custom/path/tracking.db"
+
+[display]
+colors = true
+emoji = true
+max_width = 120
+
+[filters]
+ignore_dirs = [
+  ".git",
+  "node_modules",
+  "target",
+  "__pycache__",
+  ".venv",
+  "vendor"
+]
+ignore_files = [
+  "*.lock",
+  "*.min.js",
+  "*.min.css"
+]
+
+[tee]
+enabled = true
+mode = "failures"  # "always", "failures", "never"
+directory = "~/.local/share/rtk/tee"
+max_files = 20
+max_size_bytes = 1048576  # 1MB
+skip_small = 500  # Skip outputs < 500 chars
+```
+
+## Configuration Sections
+
+### Tracking
+
+Controls token savings tracking and database behavior.
+
+<ParamField path="tracking.enabled" type="boolean" default="true">
+  Enable/disable token tracking
+</ParamField>
+
+<ParamField path="tracking.history_days" type="number" default="90">
+  Days to retain tracking data before auto-cleanup
+</ParamField>
+
+<ParamField path="tracking.database_path" type="string" optional>
+  Custom path for tracking database. Defaults to `~/.local/share/rtk/tracking.db`.
+  
+  Can also be set via environment variable: `RTK_DB_PATH=/custom/path.db`
+</ParamField>
+
+### Display
+
+Controls terminal output formatting.
+
+<ParamField path="display.colors" type="boolean" default="true">
+  Enable ANSI color codes in output
+</ParamField>
+
+<ParamField path="display.emoji" type="boolean" default="true">
+  Use emoji in output (📊, ✅, ❌, etc.)
+</ParamField>
+
+<ParamField path="display.max_width" type="number" default="120">
+  Maximum output width for table formatting
+</ParamField>
+
+### Filters
+
+Controls automatic filtering behavior for `ls`, `find`, and other commands.
+
+<ParamField path="filters.ignore_dirs" type="string[]">
+  Directories to exclude from listings (unless `-a` flag used)
+</ParamField>
+
+<ParamField path="filters.ignore_files" type="string[]">
+  File patterns to exclude (glob syntax)
+</ParamField>
+
+### Tee (Output Recovery)
+
+Controls automatic saving of full command output on failure.
+
+<ParamField path="tee.enabled" type="boolean" default="true">
+  Enable tee functionality
+</ParamField>
+
+<ParamField path="tee.mode" type="string" default="failures">
+  When to save output:
+  - `failures` - Only on non-zero exit codes
+  - `always` - Save all command output
+  - `never` - Disable tee
+</ParamField>
+
+<ParamField path="tee.directory" type="string" default="~/.local/share/rtk/tee">
+  Directory for saved output files
+</ParamField>
+
+<ParamField path="tee.max_files" type="number" default="20">
+  Maximum files to keep (oldest deleted first)
+</ParamField>
+
+<ParamField path="tee.max_size_bytes" type="number" default="1048576">
+  Maximum size per output file (1MB default)
+</ParamField>
+
+<ParamField path="tee.skip_small" type="number" default="500">
+  Skip saving outputs smaller than N characters
+</ParamField>
+
+## Environment Variables
+
+Environment variables take precedence over config file:
+
+- `RTK_DB_PATH` - Override tracking database path
+- `RTK_TEE` - Override tee mode (`always`, `failures`, `never`)
+- `RTK_TEE_DIR` - Override tee directory
+
+## Usage
+
+### View Current Config
+
+```bash
+rtk config
+```
+
+**Output:**
+```
+Config: /Users/you/.config/rtk/config.toml
+
+[tracking]
+enabled = true
+history_days = 90
+
+[display]
+colors = true
+emoji = true
+max_width = 120
+
+[filters]
+ignore_dirs = ['.git', 'node_modules', 'target', '__pycache__', '.venv', 'vendor']
+ignore_files = ['*.lock', '*.min.js', '*.min.css']
+
+[tee]
+enabled = true
+mode = 'failures'
+directory = '~/.local/share/rtk/tee'
+max_files = 20
+max_size_bytes = 1048576
+skip_small = 500
+```
+
+### Create Default Config
+
+```bash
+rtk config --create
+```
+
+**Output:**
+```
+Created: /Users/you/.config/rtk/config.toml
+```
+
+### Edit Config
+
+```bash
+vim ~/.config/rtk/config.toml
+```
+
+## Example Customizations
+
+### Disable Tracking
+
+```toml
+[tracking]
+enabled = false
+```
+
+### Custom Database Location
+
+```toml
+[tracking]
+database_path = "/mnt/data/rtk.db"
+```
+
+Or via environment:
+```bash
+export RTK_DB_PATH="/mnt/data/rtk.db"
+rtk gain
+```
+
+### No Colors (CI/CD)
+
+```toml
+[display]
+colors = false
+emoji = false
+```
+
+### Always Save Output
+
+```toml
+[tee]
+mode = "always"
+max_files = 100
+```
+
+### Add Custom Ignore Patterns
+
+```toml
+[filters]
+ignore_dirs = [
+  ".git",
+  "node_modules",
+  "target",
+  "__pycache__",
+  ".venv",
+  "vendor",
+  "build",      # Added
+  ".turbo"      # Added
+]
+ignore_files = [
+  "*.lock",
+  "*.min.js",
+  "*.min.css",
+  "*.d.ts"      # Added
+]
+```
+
+<CodeGroup>
+```bash Example: View config
+rtk config
+# Shows current configuration
+```
+
+```bash Example: Create default
+rtk config --create
+# Creates ~/.config/rtk/config.toml
+```
+
+```bash Example: Custom DB path
+export RTK_DB_PATH="/mnt/data/rtk.db"
+rtk gain
+# Uses custom database location
+```
+
+```bash Example: Edit config
+vim ~/.config/rtk/config.toml
+# Manual editing
+```
+</CodeGroup>
+
+## Exit Codes
+
+- `0` - Success
+- `1` - Error creating config file
+
+## Related Commands
+
+- `rtk init --show` - View installation status
+- `rtk gain` - View token savings (uses tracking config)
+- `rtk verify` - Verify hook integrity

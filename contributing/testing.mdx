@@ -1,0 +1,560 @@
+---
+title: Testing
+description: RTK testing strategy, TDD workflow, and test types
+---
+
+RTK follows a Test-Driven Development (TDD) approach with multiple layers of testing to ensure correctness, performance, and maintainability.
+
+## Testing Strategy
+
+### Test Pyramid
+
+RTK uses a three-tier testing approach:
+
+```
+           ┌─────────────┐
+           │   Smoke     │  Manual validation (69 assertions)
+           │   Tests     │  scripts/test-all.sh
+           └─────────────┘
+        ┌───────────────────┐
+        │   Integration     │  End-to-end command testing
+        │   Tests           │  Real command execution
+        └───────────────────┘
+     ┌────────────────────────┐
+     │     Unit Tests         │  Filter functions (105+ tests)
+     │                        │  Embedded in modules
+     └────────────────────────┘
+```
+
+### Test Coverage
+
+- **Unit tests**: 105+ tests across 25+ modules
+- **Smoke tests**: 69 assertions covering all commands
+- **TDD workflow**: Red-Green-Refactor mandatory for all new code
+
+<Note>
+  From CLAUDE.md: "All code follows Red-Green-Refactor. See `.claude/skills/rtk-tdd/` for the full workflow and Rust-idiomatic patterns."
+</Note>
+
+## TDD Workflow
+
+### Red-Green-Refactor Cycle
+
+<Steps>
+  <Step title="RED: Write a failing test">
+    Start by writing a test for the functionality you want to implement:
+    ```rust
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_filter_git_log() {
+            let raw = "abc123 Fix bug\ndef456 Add feature\n";
+            let filtered = filter_git_log(raw, 0);
+            assert!(filtered.contains("2 commits"));
+        }
+    }
+    ```
+    Run the test - it should fail because the function doesn't exist yet:
+    ```bash
+    cargo test test_filter_git_log
+    ```
+  </Step>
+
+  <Step title="GREEN: Implement minimal code to pass">
+    Write the simplest code that makes the test pass:
+    ```rust
+    fn filter_git_log(raw: &str, _verbose: u8) -> String {
+        let count = raw.lines().count();
+        format!("{} commits", count)
+    }
+    ```
+    Run the test again - it should now pass:
+    ```bash
+    cargo test test_filter_git_log
+    ```
+  </Step>
+
+  <Step title="REFACTOR: Improve the code">
+    Refactor for clarity, performance, and maintainability:
+    ```rust
+    fn filter_git_log(raw: &str, verbose: u8) -> String {
+        let lines: Vec<&str> = raw.lines()
+            .filter(|l| !l.is_empty())
+            .collect();
+        
+        if verbose >= 3 {
+            return raw.to_string(); // Show raw output
+        }
+        
+        format!("{} commits", lines.len())
+    }
+    ```
+    Run tests again to ensure refactoring didn't break anything:
+    ```bash
+    cargo test
+    ```
+  </Step>
+</Steps>
+
+### Dominant Pattern
+
+From CLAUDE.md (line 403):
+
+> **Dominant pattern**: raw string input → filter function → assert output contains/excludes
+
+**Example**:
+
+```rust
+#[test]
+fn test_lint_groups_by_rule() {
+    let raw = r#"
+        /path/to/file.js:10:5 - error no-unused-vars: 'x' is defined but never used
+        /path/to/file.js:15:3 - error no-unused-vars: 'y' is defined but never used
+        /path/to/other.js:20:1 - error semi: Missing semicolon
+    "#;
+    
+    let filtered = filter_lint_output(raw);
+    
+    // Assert grouped output
+    assert!(filtered.contains("no-unused-vars: 2"));
+    assert!(filtered.contains("semi: 1"));
+    
+    // Assert reduction
+    assert!(filtered.len() < raw.len() / 2);
+}
+```
+
+## Unit Tests
+
+### Test Organization
+
+Unit tests are embedded in each module:
+
+```rust
+// src/example_cmd.rs
+
+use anyhow::Result;
+
+pub fn run(args: &[String], verbose: u8) -> Result<()> {
+    // Implementation
+}
+
+fn filter_output(raw: &str) -> String {
+    // Filtering logic
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_filter_output_basic() {
+        let raw = "line1\nline2\nline3";
+        let result = filter_output(raw);
+        assert_eq!(result, "3 lines");
+    }
+
+    #[test]
+    fn test_filter_output_empty() {
+        let result = filter_output("");
+        assert_eq!(result, "0 lines");
+    }
+
+    #[test]
+    fn test_token_savings() {
+        let raw = "x".repeat(1000);
+        let result = filter_output(&raw);
+        
+        // Verify ≥60% savings
+        let savings = 1.0 - (result.len() as f64 / raw.len() as f64);
+        assert!(savings >= 0.6, "Expected ≥60% savings, got {:.1}%", savings * 100.0);
+    }
+}
+```
+
+### Running Unit Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests for specific module
+cargo test git::tests::
+
+# Run specific test
+cargo test test_filter_git_log
+
+# Run tests with output (see println! statements)
+cargo test -- --nocapture
+
+# Run tests in parallel (default)
+cargo test
+
+# Run tests sequentially (for debugging)
+cargo test -- --test-threads=1
+```
+
+### Test Fixtures
+
+For complex outputs, use fixture files:
+
+```rust
+#[test]
+fn test_filter_large_output() {
+    let raw = include_str!("../tests/fixtures/git_log_raw.txt");
+    let filtered = filter_git_log(raw, 0);
+    
+    // Test expectations
+    assert!(filtered.contains("commits"));
+    assert!(filtered.len() < raw.len() / 2);
+}
+```
+
+**Fixture location**: `tests/fixtures/<cmd>_raw.txt`
+
+## Integration Tests
+
+### Command Execution Tests
+
+Integration tests execute real commands:
+
+```rust
+// tests/integration_test.rs
+
+use std::process::Command;
+
+#[test]
+fn test_rtk_git_status() {
+    let output = Command::new("target/debug/rtk")
+        .args(["git", "status"])
+        .output()
+        .expect("Failed to execute rtk");
+    
+    assert!(output.status.success());
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Verify compressed output format
+    assert!(stdout.contains("modified") || stdout.contains("✓"));
+}
+
+#[test]
+fn test_exit_code_preservation() {
+    // Test command that fails
+    let output = Command::new("target/debug/rtk")
+        .args(["git", "invalid-command"])
+        .output()
+        .expect("Failed to execute rtk");
+    
+    // Should fail with git's exit code
+    assert!(!output.status.success());
+}
+```
+
+<Warning>
+  Integration tests require the RTK binary to be built first: `cargo build`
+</Warning>
+
+## Smoke Tests
+
+### scripts/test-all.sh
+
+Smoke tests validate all commands on a real system:
+
+```bash
+#!/bin/bash
+# scripts/test-all.sh
+
+# 69 assertions covering all commands
+
+# Git commands
+rtk git status || fail "git status failed"
+rtk git log -5 || fail "git log failed"
+rtk git diff HEAD~1 || fail "git diff failed"
+
+# Test runners
+rtk err "false" && fail "err should fail on error"
+rtk test "cargo test" || fail "test command failed"
+
+# File operations
+rtk ls /tmp || fail "ls failed"
+rtk read Cargo.toml || fail "read failed"
+
+# ... 60+ more assertions
+```
+
+### Running Smoke Tests
+
+```bash
+# Requires installed binary
+cargo install --path .
+
+# Run smoke tests
+bash scripts/test-all.sh
+
+# Output: PASS/FAIL for each command
+```
+
+<Note>
+  Smoke tests are run manually before releases. They require RTK to be installed system-wide.
+</Note>
+
+## Performance Benchmarks
+
+### Startup Time
+
+Verify &lt;10ms startup time requirement:
+
+```bash
+# Install hyperfine
+cargo install hyperfine
+
+# Benchmark RTK vs raw command
+hyperfine 'rtk git status' 'git status' --warmup 3
+
+# Expected output:
+# Benchmark 1: rtk git status
+#   Time (mean ± σ):       8.2 ms ±   0.5 ms    [User: 3.1 ms, System: 4.2 ms]
+# 
+# Benchmark 2: git status
+#   Time (mean ± σ):       7.5 ms ±   0.4 ms    [User: 2.8 ms, System: 4.0 ms]
+# 
+# Summary
+#   'git status' ran 1.09 ± 0.09 times faster than 'rtk git status'
+```
+
+**Acceptable**: RTK overhead &lt;10ms (typically 5-15ms)
+
+### Memory Usage
+
+```bash
+# macOS
+/usr/bin/time -l target/release/rtk git status
+# Look for: maximum resident set size
+
+# Linux
+/usr/bin/time -v target/release/rtk git status
+# Look for: Maximum resident set size (kbytes)
+```
+
+**Target**: &lt;5MB resident memory
+
+### Token Savings Verification
+
+Verify token savings in tests:
+
+```rust
+fn count_tokens(text: &str) -> usize {
+    (text.len() as f64 / 4.0).ceil() as usize
+}
+
+#[test]
+fn test_token_savings_git_status() {
+    let raw = include_str!("../tests/fixtures/git_status_raw.txt");
+    let filtered = filter_git_status(raw, 0);
+    
+    let input_tokens = count_tokens(raw);
+    let output_tokens = count_tokens(&filtered);
+    let savings_pct = ((input_tokens - output_tokens) as f64 / input_tokens as f64) * 100.0;
+    
+    // Verify ≥60% savings
+    assert!(savings_pct >= 60.0, 
+            "Expected ≥60% savings, got {:.1}%", savings_pct);
+}
+```
+
+## Manual Testing Requirements
+
+### For Filter Changes
+
+From CLAUDE.md (lines 477-481):
+
+**Manual testing is REQUIRED** for filter changes:
+
+<Steps>
+  <Step title="Test with real command">
+    ```bash
+    rtk git log -10
+    ```
+    Inspect output, verify condensed correctly
+  </Step>
+
+  <Step title="Verify critical info preserved">
+    Check that essential information is retained:
+    - Commit hashes for git log
+    - Error messages for linters
+    - File names for file operations
+  </Step>
+
+  <Step title="Check format is readable">
+    Output should be human-readable and consistently formatted
+  </Step>
+
+  <Step title="Verify exit code">
+    ```bash
+    rtk git invalid-command
+    echo $?  # Should match git's exit code
+    ```
+  </Step>
+</Steps>
+
+### For Hook Changes
+
+Test in real Claude Code session:
+
+1. Create test Claude Code session
+2. Type raw command (e.g., `git status`)
+3. Verify hook rewrites to `rtk git status`
+4. Check output is correct
+
+### For Performance Changes
+
+<Steps>
+  <Step title="Benchmark baseline">
+    ```bash
+    hyperfine 'rtk git status' --warmup 3 > /tmp/before.txt
+    ```
+  </Step>
+
+  <Step title="Make changes and rebuild">
+    ```bash
+    # Make changes
+    cargo build --release
+    ```
+  </Step>
+
+  <Step title="Benchmark again">
+    ```bash
+    hyperfine 'target/release/rtk git status' --warmup 3 > /tmp/after.txt
+    ```
+  </Step>
+
+  <Step title="Compare results">
+    ```bash
+    diff /tmp/before.txt /tmp/after.txt
+    ```
+    Startup time should remain &lt;10ms
+  </Step>
+</Steps>
+
+### Cross-Platform Testing
+
+From CLAUDE.md (lines 494-497):
+
+- **macOS (zsh)**: Test locally
+- **Linux (bash)**: Use Docker
+  ```bash
+  docker run --rm -v $(pwd):/rtk -w /rtk rust:latest cargo test
+  ```
+- **Windows (PowerShell)**: Trust CI/CD pipeline or test manually
+
+<Warning>
+  **Anti-pattern**: Running only automated tests (`cargo test`, `cargo clippy`) without actually executing `rtk <cmd>` and inspecting output.
+</Warning>
+
+## Test Commands Reference
+
+```bash
+# Unit tests
+cargo test                    # All tests
+cargo test filter::tests::    # Module-specific
+cargo test -- --nocapture     # With stdout
+
+# Integration tests
+cargo test --test integration_test
+
+# Smoke tests (requires installed binary)
+bash scripts/test-all.sh
+
+# Performance benchmarks
+hyperfine 'rtk git status' 'git status' --warmup 3
+/usr/bin/time -l rtk git status  # macOS memory
+/usr/bin/time -v rtk git status  # Linux memory
+
+# Pre-commit quality gate
+cargo fmt --all --check && cargo clippy --all-targets && cargo test
+```
+
+## Test Writing Guidelines
+
+### 1. Test Names Should Be Descriptive
+
+```rust
+// ✅ GOOD
+#[test]
+fn test_filter_git_log_groups_by_date() { ... }
+
+// ❌ BAD
+#[test]
+fn test1() { ... }
+```
+
+### 2. Use Assert Messages
+
+```rust
+// ✅ GOOD
+assert!(savings >= 0.6, 
+        "Expected ≥60% savings, got {:.1}%", savings * 100.0);
+
+// ❌ BAD
+assert!(savings >= 0.6);
+```
+
+### 3. Test Edge Cases
+
+```rust
+#[test]
+fn test_filter_empty_input() {
+    let result = filter_output("");
+    assert_eq!(result, "0 items");
+}
+
+#[test]
+fn test_filter_unicode() {
+    let raw = "emoji 🚀 test";
+    let result = filter_output(raw);
+    assert!(result.contains("test"));
+}
+
+#[test]
+fn test_filter_ansi_codes() {
+    let raw = "\x1b[31merror\x1b[0m message";
+    let result = filter_output(raw);
+    assert!(result.contains("error"));
+}
+```
+
+### 4. Verify Token Savings
+
+All filter tests should verify ≥60% token savings:
+
+```rust
+#[test]
+fn test_achieves_target_savings() {
+    let raw = generate_realistic_output();
+    let filtered = filter_output(&raw);
+    
+    let savings = 1.0 - (filtered.len() as f64 / raw.len() as f64);
+    assert!(savings >= 0.6, 
+            "Failed to meet 60% savings target: {:.1}%", savings * 100.0);
+}
+```
+
+## Untested Modules Backlog
+
+From CLAUDE.md (line 398):
+
+> See `.claude/skills/rtk-tdd/references/testing-patterns.md` for RTK-specific patterns and untested module backlog.
+
+Modules that may need additional test coverage:
+- Container commands (docker/podman)
+- GitHub CLI commands (gh)
+- Environment commands (env)
+- Some error handling paths
+
+## Next Steps
+
+- [Adding Commands](/contributing/adding-commands) - Implement new filters with TDD
+- [Architecture](/contributing/architecture) - Understand filter strategies
+- [Security](/contributing/security) - Security testing and review process

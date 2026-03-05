@@ -1,122 +1,144 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "RTK (Rust Token Killer)",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#06e29d",
+    "light": "#a18dfa",
+    "dark": "#3cdbc8"
   },
-  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "https://media.brand.dev/1a65c0b1-ba83-4753-a5ce-5377f0b89df4.png",
+    "dark": "https://media.brand.dev/da78b523-f41d-4865-a450-65d1c2b2d708.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/rtk-ai/rtk"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/rtk-ai/rtk",
+      "website": "https://www.rtk-ai.app"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/how-it-works",
+              "concepts/token-savings",
+              "concepts/filtering-strategies"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Commands",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "commands/overview",
+              "commands/file-operations",
+              "commands/git",
+              "commands/testing",
+              "commands/containers",
+              "commands/javascript",
+              "commands/python",
+              "commands/go",
+              "commands/github"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Integration",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "integration/claude-code",
+              "integration/hooks",
+              "integration/configuration"
+            ]
+          },
+          {
+            "group": "Analytics",
+            "pages": [
+              "analytics/gain-command",
+              "analytics/discover",
+              "analytics/tracking"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/tee-recovery",
+              "advanced/custom-database",
+              "advanced/proxy-mode"
+            ]
+          },
+          {
+            "group": "Resources",
+            "pages": [
+              "troubleshooting",
+              "faq",
+              "migration"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Command Reference",
             "pages": [
-              "api-reference/introduction"
+              "api/ls",
+              "api/read",
+              "api/grep",
+              "api/git",
+              "api/test",
+              "api/lint",
+              "api/gain",
+              "api/discover",
+              "api/init",
+              "api/config"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Global Flags",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/flags"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Contributing",
+        "groups": [
+          {
+            "group": "Development",
+            "pages": [
+              "contributing/overview",
+              "contributing/architecture",
+              "contributing/building",
+              "contributing/testing",
+              "contributing/adding-commands"
+            ]
+          },
+          {
+            "group": "Security",
+            "pages": [
+              "contributing/security"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

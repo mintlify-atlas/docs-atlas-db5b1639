@@ -1,0 +1,402 @@
+---
+title: Migration Guide
+description: Migrate between RTK versions and hook modes
+---
+
+# Migration Guide
+
+Guide for migrating between RTK versions, hook modes, and configuration formats.
+
+## Version Migrations
+
+### Migrating to v0.9.5+ (Hook-First Mode)
+
+<Note>
+  v0.9.5 introduced a new **hook-first installation mode** that reduces context overhead from ~2000 tokens to ~10 tokens.
+</Note>
+
+**If you previously used `rtk init -g` with the old system (137-line injection):**
+
+```bash
+# Simply re-run rtk init to automatically migrate
+rtk init -g
+
+# This will:
+# 1. Install the auto-rewrite hook to ~/.claude/hooks/rtk-rewrite.sh
+# 2. Create slim RTK.md (10 lines) at ~/.claude/RTK.md
+# 3. Add @RTK.md reference to ~/.claude/CLAUDE.md
+# 4. Prompt to patch settings.json
+
+# Restart Claude Code after migration
+```
+
+**Benefits of migration:**
+- 99.5% reduction in context overhead (~2000 tokens → ~10 tokens)
+- Automatic command rewriting via hook
+- No changes to your workflow
+- Backward compatible with existing projects
+
+**Rollback if needed:**
+```bash
+# Remove hook-first setup
+rtk init -g --uninstall
+
+# Return to legacy full injection
+rtk init -g --claude-md
+```
+
+### Migrating from v0.7.x to v0.8.0+
+
+<Warning>
+  v0.8.0 introduced execution time tracking. Historical commands will show 0ms execution time.
+</Warning>
+
+**Database Schema Update:**
+
+RTK automatically migrates the SQLite schema when you run any `rtk` command after updating:
+
+```bash
+# Update RTK
+cargo install --git https://github.com/rtk-ai/rtk --force
+
+# Run any command to trigger migration
+rtk gain
+
+# New fields are added:
+# - exec_time_ms (execution time in milliseconds)
+# - Historical data shows 0ms (pre-tracking)
+```
+
+**New Features:**
+- `rtk gain` now shows total and average execution time
+- `--daily` breakdown includes time metrics per day
+- JSON/CSV exports include `total_time_ms` and `avg_time_ms` fields
+
+### Migrating from v0.15.x to v0.16.0+ (Python & Go Support)
+
+<Note>
+  v0.15.0+ added Python (ruff, pytest, pip) and Go (test, build, vet, golangci-lint) support.
+</Note>
+
+**New Commands Available:**
+
+```bash
+# Python
+rtk ruff check              # Linter with JSON parsing (80% reduction)
+rtk ruff format             # Formatter with text filter
+rtk pytest                  # Test runner with state machine (90% reduction)
+rtk pip list                # Package manager (auto-detect uv, 70% reduction)
+
+# Go
+rtk go test                 # NDJSON streaming parser (90% reduction)
+rtk go build                # Build errors only (80% reduction)
+rtk go vet                  # Vet issues (75% reduction)
+rtk golangci-lint run       # JSON grouped by rule (85% reduction)
+```
+
+**Hook Auto-Rewrite:**
+
+If you're using the auto-rewrite hook, update it:
+
+```bash
+# Re-run init to update hook with new command patterns
+rtk init -g
+
+# Restart Claude Code
+```
+
+## Hook Mode Migrations
+
+### From Legacy CLAUDE.md to Hook Mode
+
+**Current Setup:** Full 137-line injection in `~/.claude/CLAUDE.md`
+
+**Migration Steps:**
+
+```bash
+# 1. Back up your current CLAUDE.md
+cp ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.backup
+
+# 2. Install hook-first mode
+rtk init -g
+
+# 3. Verify hook installation
+rtk init --show
+# Should show: "✅ Hook: executable, with guards"
+
+# 4. Restart Claude Code
+
+# 5. Test with a command
+git status  # Should automatically use rtk
+```
+
+**What Changed:**
+- `~/.claude/CLAUDE.md` now has just one line: `@RTK.md`
+- `~/.claude/RTK.md` created (10 lines, minimal context)
+- `~/.claude/hooks/rtk-rewrite.sh` installed
+- `~/.claude/settings.json` updated with hook registration
+
+**Rollback:**
+```bash
+# Restore original CLAUDE.md
+cp ~/.claude/CLAUDE.md.backup ~/.claude/CLAUDE.md
+
+# Remove hook artifacts
+rtk init -g --uninstall
+```
+
+### From No Hook to Hook Mode
+
+**Current Setup:** Using `rtk` prefix manually for each command
+
+**Migration Steps:**
+
+```bash
+# Install hook
+rtk init -g
+
+# Restart Claude Code
+
+# Now you can drop the rtk prefix:
+# Old: rtk git status
+# New: git status (automatically rewrites to rtk git status)
+```
+
+**Benefits:**
+- No need to remember rtk prefix
+- 100% adoption (hook applies to all commands)
+- Works across all conversations and subagents
+
+### From Hook Mode to Manual Mode
+
+**If you prefer explicit control:**
+
+```bash
+# Remove hook and RTK.md
+rtk init -g --uninstall
+
+# Optional: Keep rtk but use legacy full injection
+rtk init -g --claude-md
+
+# Restart Claude Code
+```
+
+**What Changed:**
+- No automatic command rewriting
+- Must use `rtk` prefix explicitly
+- Full context available in CLAUDE.md (~2000 tokens)
+
+## Configuration Migrations
+
+### Custom Database Location
+
+<Note>
+  v0.13.0+ supports custom database paths via environment variable or config file.
+</Note>
+
+**Migration Steps:**
+
+```bash
+# 1. Stop any running rtk commands
+
+# 2. Move database to new location
+mv ~/.local/share/rtk/history.db /path/to/custom.db
+
+# 3. Set new location (choose one method):
+
+# Method A: Environment variable (highest priority)
+echo 'export RTK_DB_PATH="/path/to/custom.db"' >> ~/.bashrc
+source ~/.bashrc
+
+# Method B: Config file
+mkdir -p ~/.config/rtk
+cat > ~/.config/rtk/config.toml <<EOF
+[tracking]
+database_path = "/path/to/custom.db"
+EOF
+
+# 4. Verify
+rtk gain  # Should show your historical data
+```
+
+### Tee Output Recovery (v0.19.0+)
+
+<Note>
+  v0.19.0 introduced the tee feature for saving raw output on command failure.
+</Note>
+
+**Enable/Configure Tee:**
+
+```bash
+# Create config file
+mkdir -p ~/.config/rtk
+cat > ~/.config/rtk/config.toml <<EOF
+[tee]
+enabled = true              # default: true
+mode = "failures"           # "failures" (default), "always", or "never"
+max_files = 20              # max files to keep (oldest rotated out)
+max_file_size = 1048576     # 1MB per file max
+# directory = "/custom/path"  # optional: override default location
+EOF
+```
+
+**Environment Overrides:**
+```bash
+# Disable tee entirely
+export RTK_TEE=0
+
+# Override output directory
+export RTK_TEE_DIR=/custom/path
+```
+
+## Breaking Changes by Version
+
+### v0.24.0 (2026-03-04)
+- Added hook integrity verification (SHA-256)
+- Git exit codes now properly propagated
+- No migration required
+
+### v0.22.0 (2026-02-18)
+- Added `rtk wc` command
+- No breaking changes
+
+### v0.20.0 (2026-02-16)
+- Hook audit mode added
+- Install location changed from `/usr/local/bin` to `~/.local/bin`
+- **Action Required**: Update PATH if using manual installation
+
+### v0.15.0 (2026-02-12)
+- Python and Go support added
+- Cargo test output aggregated to single line
+- No breaking changes for existing commands
+
+### v0.10.0 (2026-02-07)
+- Hook-first installation introduced
+- Legacy full injection still supported via `--claude-md` flag
+- **Migration Recommended**: Re-run `rtk init -g` to reduce context overhead
+
+### v0.8.0 (2026-02-02)
+- Execution time tracking added to database
+- **Database Migration**: Automatic on first run
+- Historical data shows 0ms for pre-v0.8.0 commands
+
+## Uninstall and Reinstall
+
+### Complete RTK Removal
+
+```bash
+# 1. Remove global artifacts
+rtk init -g --uninstall
+
+# 2. Remove binary
+# If installed via cargo:
+cargo uninstall rtk
+
+# If installed via package manager:
+brew uninstall rtk          # macOS Homebrew
+sudo apt remove rtk         # Debian/Ubuntu
+sudo dnf remove rtk         # Fedora/RHEL
+
+# 3. Remove local data (optional)
+rm -rf ~/.local/share/rtk      # Database and tee output
+rm -rf ~/.config/rtk           # Config files
+
+# 4. Restart Claude Code
+```
+
+### Fresh Installation
+
+```bash
+# 1. Ensure rtk is completely removed (see above)
+
+# 2. Install RTK
+curl -fsSL https://github.com/rtk-ai/rtk/blob/master/install.sh | sh
+
+# 3. Verify installation
+rtk --version
+rtk gain
+
+# 4. Initialize for Claude Code
+rtk init -g
+
+# 5. Restart Claude Code
+```
+
+## Troubleshooting Migration Issues
+
+<AccordionGroup>
+  <Accordion title="Migration failed: settings.json invalid">
+    **Problem**: `rtk init -g` reports settings.json is invalid JSON.
+    
+    **Solution**:
+    ```bash
+    # Validate JSON
+    cat ~/.claude/settings.json | python3 -m json.tool
+    
+    # If invalid, restore from backup
+    cp ~/.claude/settings.json.bak ~/.claude/settings.json
+    
+    # Retry migration
+    rtk init -g
+    ```
+  </Accordion>
+
+  <Accordion title="Database migration failed">
+    **Problem**: Error when running `rtk gain` after update.
+    
+    **Solution**:
+    ```bash
+    # Back up database
+    cp ~/.local/share/rtk/history.db ~/.local/share/rtk/history.db.backup
+    
+    # Reset database (will lose history)
+    rm ~/.local/share/rtk/history.db
+    
+    # Run rtk command to create fresh database
+    rtk gain
+    ```
+  </Accordion>
+
+  <Accordion title="Hook not working after migration">
+    **Problem**: Hook installed but commands not using rtk.
+    
+    **Solution**:
+    ```bash
+    # Verify hook installation
+    rtk init --show
+    
+    # Check hook is executable
+    ls -la ~/.claude/hooks/rtk-rewrite.sh
+    
+    # Make executable if needed
+    chmod +x ~/.claude/hooks/rtk-rewrite.sh
+    
+    # Restart Claude Code
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Need Help?
+
+If you encounter issues during migration:
+
+**Run the diagnostic script:**
+```bash
+bash scripts/check-installation.sh
+```
+
+**Report issues:**
+- GitHub: https://github.com/rtk-ai/rtk/issues
+- Email: contact@rtk-ai.app
+
+**Restore from backup:**
+```bash
+# Settings
+cp ~/.claude/settings.json.bak ~/.claude/settings.json
+
+# Database
+cp ~/.local/share/rtk/history.db.backup ~/.local/share/rtk/history.db
+
+# CLAUDE.md
+cp ~/.claude/CLAUDE.md.backup ~/.claude/CLAUDE.md
+```

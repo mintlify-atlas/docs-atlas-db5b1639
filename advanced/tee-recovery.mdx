@@ -1,0 +1,311 @@
+---
+title: "Tee Recovery"
+description: "Full output recovery on command failures"
+---
+
+## What is Tee Recovery?
+
+When RTK filters command output to save tokens, critical debugging information (stack traces, assertion messages) can be lost. If a command fails, LLM agents may re-run the same command multiple times to retrieve the full output.
+
+The **tee recovery** feature solves this by automatically saving raw, unfiltered output to a file when commands fail. Instead of re-executing the command, the agent reads the saved file — saving tokens and time.
+
+## How It Works
+
+<Note>
+On command failure (exit code ≠ 0), RTK saves the full unfiltered output to `~/.local/share/rtk/tee/` and prints a one-line hint for the LLM to read.
+</Note>
+
+Example workflow:
+
+```bash
+rtk cargo test
+# Output: ✓ cargo test: 15 passed (1 suite, 0.01s)
+# [full output: ~/.local/share/rtk/tee/1707753600_cargo_test.log]
+```
+
+The agent can now read `~/.local/share/rtk/tee/1707753600_cargo_test.log` directly instead of running `cargo test` again.
+
+### File Naming
+
+Tee files use the format: `{epoch}_{sanitized_command}.log`
+
+- **Epoch timestamp**: Sorts files chronologically
+- **Sanitized command**: Alphanumeric/underscore/hyphen only, truncated at 40 chars
+- Example: `1707753600_cargo_test.log`
+
+### Minimum Output Size
+
+Tee skips outputs smaller than **500 bytes** — these are short enough to re-run without significant overhead.
+
+## Configuration
+
+### Default Settings
+
+Create or edit `~/.config/rtk/config.toml`:
+
+```toml
+[tee]
+enabled = true          # Enable tee feature
+mode = "failures"       # When to save: "failures", "always", or "never"
+max_files = 20          # Keep only the last 20 files (oldest auto-deleted)
+max_file_size = 1048576 # 1MB max per file (larger outputs truncated)
+# directory = "/custom/path"  # Optional: override default location
+```
+
+### Tee Modes
+
+<CodeGroup>
+```toml failures (default)
+[tee]
+mode = "failures"  # Save output only on command failures (exit code != 0)
+```
+
+```toml always
+[tee]
+mode = "always"  # Save output for all commands (success + failure)
+```
+
+```toml never
+[tee]
+mode = "never"  # Disable tee entirely
+```
+</CodeGroup>
+
+<Warning>
+`mode = "always"` can consume significant disk space. Use `max_files` to limit retention.
+</Warning>
+
+### Environment Overrides
+
+Environment variables take precedence over `config.toml`:
+
+```bash
+# Disable tee temporarily
+RTK_TEE=0 rtk cargo test
+
+# Override output directory
+export RTK_TEE_DIR="/tmp/rtk-tee"
+rtk cargo test
+```
+
+**Priority**: `RTK_TEE` / `RTK_TEE_DIR` > `config.toml` > defaults
+
+## File Rotation and Size Limits
+
+### Automatic Cleanup
+
+Tee maintains a fixed number of files (default: 20). When this limit is exceeded:
+
+1. Files are sorted by timestamp (oldest first)
+2. Oldest files are deleted to maintain the limit
+3. Only `.log` files in the tee directory are affected
+
+Example: With `max_files = 20`, if you run 25 failing commands, the first 5 tee files are automatically deleted.
+
+### Size Truncation
+
+Outputs larger than `max_file_size` (default: 1MB) are truncated:
+
+```
+{first 1MB of output}
+
+--- truncated at 1048576 bytes ---
+```
+
+This prevents disk exhaustion from extremely verbose commands.
+
+## Supported Commands
+
+Tee recovery is available for these RTK commands:
+
+<Accordion title="Build & Test Tools">
+- `cargo build`
+- `cargo test`
+- `cargo clippy`
+- `cargo check`
+- `cargo install`
+- `cargo nextest`
+- `vitest run`
+- `pytest`
+- `go test`
+- `go build`
+- `go vet`
+</Accordion>
+
+<Accordion title="Linters & Type Checkers">
+- `lint` (eslint/biome)
+- `tsc`
+- `ruff check`
+- `ruff format`
+- `pylint`
+- `mypy`
+- `golangci-lint run`
+</Accordion>
+
+<Accordion title="Generic Wrappers">
+- `err <command>` — errors/warnings only
+- `test <command>` — failures only
+</Accordion>
+
+## Examples
+
+### Example 1: Default Behavior (Failures Only)
+
+```toml
+# ~/.config/rtk/config.toml
+[tee]
+mode = "failures"
+```
+
+```bash
+# Success — no tee file created
+rtk cargo build
+# Output: ✓ cargo build (0.5s)
+
+# Failure — tee file created
+rtk cargo test
+# Output: FAILED: 2/15 tests
+#   ✗ test_edge_case: assertion failed at src/lib.rs:42
+# [full output: ~/.local/share/rtk/tee/1707753600_cargo_test.log]
+
+# Agent reads the file instead of re-running
+cat ~/.local/share/rtk/tee/1707753600_cargo_test.log
+```
+
+### Example 2: Always Save Output
+
+```toml
+# ~/.config/rtk/config.toml
+[tee]
+mode = "always"
+max_files = 50  # Increase retention for always mode
+```
+
+```bash
+# Every command saves output (success + failure)
+rtk cargo test
+# [full output: ~/.local/share/rtk/tee/1707753600_cargo_test.log]
+
+rtk cargo build
+# [full output: ~/.local/share/rtk/tee/1707753610_cargo_build.log]
+```
+
+### Example 3: Disable Tee Temporarily
+
+```bash
+# Disable via environment variable
+RTK_TEE=0 rtk cargo test
+# No tee file created, even on failure
+```
+
+### Example 4: Custom Tee Directory
+
+```toml
+# ~/.config/rtk/config.toml
+[tee]
+directory = "/var/log/rtk"
+```
+
+```bash
+# Or via environment
+export RTK_TEE_DIR="/tmp/rtk-tee"
+rtk cargo test
+# [full output: /tmp/rtk-tee/1707753600_cargo_test.log]
+```
+
+### Example 5: Large Output Truncation
+
+```toml
+# ~/.config/rtk/config.toml
+[tee]
+max_file_size = 524288  # 512KB limit
+```
+
+```bash
+rtk cargo test  # Generates 5MB of output
+# Tee file contains first 512KB + truncation notice
+cat ~/.local/share/rtk/tee/1707753600_cargo_test.log
+# ... 512KB of output ...
+# --- truncated at 524288 bytes ---
+```
+
+## Troubleshooting
+
+### Tee Files Not Created
+
+**Check tee is enabled**:
+```bash
+rtk config  # Look for [tee] section
+```
+
+**Verify mode allows saving**:
+```toml
+[tee]
+mode = "failures"  # Must NOT be "never"
+```
+
+**Check environment override**:
+```bash
+echo $RTK_TEE  # Should NOT be "0"
+```
+
+### Disk Space Issues
+
+**Reduce retention**:
+```toml
+[tee]
+max_files = 10       # Keep fewer files
+max_file_size = 262144  # 256KB limit
+```
+
+**Change directory to larger partition**:
+```toml
+[tee]
+directory = "/mnt/large-disk/rtk-tee"
+```
+
+### Tee Hint Not Visible
+
+Tee hints are printed to **stdout** after the filtered output. If you're capturing output to a file, check both:
+
+```bash
+rtk cargo test 2>&1 | tee output.log
+# Check output.log for the hint line
+```
+
+## Implementation Details
+
+<Note>
+Tee failures never affect command output or exit codes. If tee cannot write the file (permissions, disk full, etc.), RTK silently continues without interrupting the user workflow.
+</Note>
+
+From `src/tee.rs`:
+
+```rust
+/// Write raw output to tee file if conditions are met.
+/// Returns file path on success, None if skipped/failed.
+pub fn tee_raw(raw: &str, command_slug: &str, exit_code: i32) -> Option<PathBuf> {
+    // Check RTK_TEE=0 env override (disable)
+    if std::env::var("RTK_TEE").ok().as_deref() == Some("0") {
+        return None;
+    }
+
+    let config = Config::load().ok()?;
+    let tee_dir = get_tee_dir(&config)?;
+    let tee_dir = should_tee(&config.tee, raw.len(), exit_code, Some(tee_dir))?;
+
+    write_tee_file(raw, command_slug, &tee_dir,
+                   config.tee.max_file_size, config.tee.max_files)
+}
+```
+
+**Key behaviors**:
+- Checks `RTK_TEE=0` first (fastest exit)
+- Skips outputs < 500 bytes (hardcoded `MIN_TEE_SIZE`)
+- Respects mode (failures/always/never)
+- Returns `None` on any error (graceful degradation)
+
+## See Also
+
+- [Custom Database Path](/advanced/custom-database) — Configure tracking database location
+- [Proxy Mode](/advanced/proxy-mode) — Bypass RTK filtering while tracking metrics

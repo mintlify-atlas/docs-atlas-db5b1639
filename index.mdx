@@ -1,97 +1,214 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "RTK - Rust Token Killer"
+description: "Reduce LLM token consumption by 60-90% on common dev commands with intelligent output filtering"
 ---
 
-## Setting up
+<div style={{
+  background: 'linear-gradient(135deg, rgba(6, 226, 157, 0.1) 0%, rgba(60, 219, 200, 0.1) 100%)',
+  borderRadius: '12px',
+  padding: '48px 32px',
+  marginBottom: '48px',
+  border: '1px solid rgba(6, 226, 157, 0.2)'
+}}>
+  <h1 style={{
+    fontSize: '48px',
+    fontWeight: '700',
+    marginBottom: '16px',
+    background: 'linear-gradient(135deg, #06e29d 0%, #3cdbc8 100%)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    backgroundClip: 'text'
+  }}>
+    RTK - Rust Token Killer
+  </h1>
+  <p style={{
+    fontSize: '20px',
+    color: '#E6E6E6',
+    marginBottom: '32px',
+    maxWidth: '800px'
+  }}>
+    High-performance CLI proxy that reduces LLM token consumption by 60-90% on common dev commands through intelligent output filtering. Save tokens, save money, work faster.
+  </p>
+  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+    <a href="/quickstart" style={{
+      background: '#2ee59d',
+      color: '#0a0a0a',
+      padding: '12px 24px',
+      borderRadius: '6px',
+      fontWeight: '600',
+      textDecoration: 'none',
+      display: 'inline-block'
+    }}>
+      Get Started →
+    </a>
+    <a href="https://github.com/rtk-ai/rtk" style={{
+      background: 'transparent',
+      color: '#E6E6E6',
+      padding: '12px 24px',
+      borderRadius: '6px',
+      fontWeight: '600',
+      textDecoration: 'none',
+      display: 'inline-block',
+      border: '1px solid rgba(108, 114, 132, 0.5)'
+    }}>
+      View on GitHub
+    </a>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+## Token Savings in Action
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+RTK achieves 60-90% token reduction on common development operations:
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={3}>
+  <Card title="Git Operations" icon="git-alt">
+    **80-92% savings**
+    
+    Compact git status, logs, diffs, and commits
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Test Output" icon="flask-vial">
+    **90% savings**
+    
+    Show only failures, hide verbose test output
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Linting" icon="check">
+    **80-85% savings**
+    
+    Grouped errors, summary stats only
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Key Features
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Zero Overhead" icon="gauge-high" href="/concepts/how-it-works">
+    Less than 10ms startup time. Single Rust binary with no dependencies.
+  </Card>
+  <Card title="Smart Filtering" icon="filter" href="/concepts/filtering-strategies">
+    Four strategies: filtering, grouping, truncation, and deduplication.
+  </Card>
+  <Card title="Claude Code Integration" icon="robot" href="/integration/claude-code">
+    Auto-rewrite hooks for 100% transparent command interception.
+  </Card>
+  <Card title="Multi-Language Support" icon="code" href="/commands/overview">
+    JavaScript, Python, Go, Rust - with specialized handlers for each ecosystem.
+  </Card>
+  <Card title="Token Analytics" icon="chart-line" href="/analytics/gain-command">
+    Track savings over time with built-in SQLite analytics.
+  </Card>
+  <Card title="Cross-Platform" icon="globe" href="/installation">
+    Works on macOS, Linux, and Windows with native binaries.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Quick Example
 
-## Need inspiration?
+See the difference RTK makes:
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+```bash Without RTK (200+ lines)
+$ git status
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   src/main.rs
+        modified:   src/utils.rs
+        modified:   Cargo.toml
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        new-feature.rs
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+
+```bash With RTK (1 line)
+$ rtk git status
+3 modified, 1 untracked ✓
+```
+
+**Token savings: 80%**
+
+## Get Started in Minutes
+
+<Steps>
+  <Step title="Install RTK">
+    Choose your preferred installation method:
+    
+    <CodeGroup>
+    ```bash Homebrew
+    brew install rtk
+    ```
+    
+    ```bash Quick Install
+    curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
+    ```
+    
+    ```bash Cargo
+    cargo install --git https://github.com/rtk-ai/rtk
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Verify Installation">
+    Check that RTK is installed correctly:
+    
+    ```bash
+    rtk --version
+    rtk gain
+    ```
+    
+    The `rtk gain` command should show token savings stats (not "command not found").
+  </Step>
+  
+  <Step title="Set Up Claude Code Integration">
+    Initialize RTK for automatic command rewriting:
+    
+    ```bash
+    rtk init --global
+    ```
+    
+    This installs a hook that automatically rewrites commands like `git status` to `rtk git status`.
+  </Step>
+  
+  <Step title="Start Saving Tokens">
+    Use RTK with any supported command:
+    
+    ```bash
+    rtk git status
+    rtk test cargo test
+    rtk lint
+    rtk gh pr list
+    ```
+  </Step>
+</Steps>
+
+## Popular Commands
+
+<CardGroup cols={2}>
+  <Card title="File Operations" icon="folder" href="/commands/file-operations">
+    `rtk ls`, `rtk read`, `rtk grep`, `rtk find`
+  </Card>
+  <Card title="Git Commands" icon="git-alt" href="/commands/git">
+    `rtk git status`, `rtk git log`, `rtk git diff`
+  </Card>
+  <Card title="Testing" icon="flask" href="/commands/testing">
+    `rtk test`, `rtk cargo test`, `rtk vitest`, `rtk pytest`
+  </Card>
+  <Card title="Linting" icon="check-double" href="/commands/javascript">
+    `rtk lint`, `rtk tsc`, `rtk ruff`, `rtk golangci-lint`
+  </Card>
+</CardGroup>
+
+## Community
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github" href="https://github.com/rtk-ai/rtk">
+    Star the repo, report issues, contribute code
+  </Card>
+  <Card title="Documentation" icon="book" href="/introduction">
+    Complete guides, API reference, and examples
+  </Card>
+</CardGroup>

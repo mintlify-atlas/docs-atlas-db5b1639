@@ -1,0 +1,101 @@
+---
+title: 'rtk ls'
+description: 'Token-optimized directory listing'
+---
+
+## Overview
+
+Lists directory contents in a token-optimized format with automatic noise filtering and file statistics. Reduces output by 60-70% compared to raw `ls -la`.
+
+## Syntax
+
+```bash
+rtk ls [OPTIONS] [PATH...]
+```
+
+## Arguments
+
+<ParamField path="PATH" type="string[]" optional>
+  Directories to list. Defaults to current directory if not specified.
+</ParamField>
+
+## Options
+
+<ParamField query="-a, --all" type="flag">
+  Show hidden directories like `.git` and `node_modules` (normally filtered)
+</ParamField>
+
+<ParamField query="-l" type="flag">
+  Detailed listing (always enabled by RTK)
+</ParamField>
+
+<ParamField query="-R" type="flag">
+  Recursive listing
+</ParamField>
+
+<ParamField query="-h" type="flag">
+  Human-readable sizes (always enabled by RTK)
+</ParamField>
+
+## Automatic Filtering
+
+RTK automatically excludes common noise directories unless `-a` is specified:
+
+- `node_modules`, `.git`, `target`
+- `__pycache__`, `.next`, `dist`, `build`
+- `.cache`, `.turbo`, `.vercel`
+- `.pytest_cache`, `.mypy_cache`, `.tox`
+- `.venv`, `venv`, `coverage`
+
+## Output Format
+
+```
+src/
+Cargo.toml  1.2K
+README.md  5.5K
+
+📊 2 files, 1 dirs (2 .rs, 1 .toml)
+```
+
+**Features:**
+- Directories shown with `/` suffix
+- Human-readable file sizes (K, M)
+- Summary line with file count by extension
+- No permissions, timestamps, or ownership clutter
+
+## Token Savings
+
+**65% reduction** - removes metadata while preserving essential information
+
+<CodeGroup>
+```bash Example: Basic listing
+rtk ls
+# Output:
+# src/
+# tests/
+# Cargo.toml  1.2K
+# README.md  5.5K
+# 📊 2 files, 2 dirs
+```
+
+```bash Example: Show hidden
+rtk ls -a
+# Shows .git, node_modules, etc.
+```
+
+```bash Example: Specific directory
+rtk ls src
+# Lists contents of src/ directory
+```
+</CodeGroup>
+
+## Exit Codes
+
+- `0` - Success
+- `1` - Directory not found or permission denied
+
+## Related Commands
+
+- `rtk tree` - Recursive tree view
+- `rtk find` - Search for files
+- `rtk read` - View file contents

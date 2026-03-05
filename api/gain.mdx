@@ -1,0 +1,278 @@
+---
+title: 'rtk gain'
+description: 'View token savings analytics'
+---
+
+## Overview
+
+Displays comprehensive statistics about RTK token savings, command usage, and efficiency metrics. Data persists in SQLite database with 90-day retention.
+
+## Syntax
+
+```bash
+rtk gain [OPTIONS]
+```
+
+## Options
+
+### Scope Filters
+
+<ParamField query="-p, --project" type="flag">
+  Show statistics for current project only (filters by working directory)
+</ParamField>
+
+### Display Modes
+
+<ParamField query="-g, --graph" type="flag">
+  Show ASCII bar graph of daily savings (last 30 days)
+</ParamField>
+
+<ParamField query="-H, --history" type="flag">
+  Show recent command history with savings percentages
+</ParamField>
+
+<ParamField query="-q, --quota" type="flag">
+  Show monthly quota savings estimate
+</ParamField>
+
+<ParamField query="-t, --tier" type="string" default="20x" requires="quota">
+  Subscription tier for quota calculation:
+  - `pro` - Pro tier ($20/mo, ~6M tokens/month)
+  - `5x` - Max 5x tier ($100/mo, ~30M tokens/month)
+  - `20x` - Max 20x tier ($200/mo, ~120M tokens/month)
+</ParamField>
+
+### Time Breakdowns
+
+<ParamField query="-d, --daily" type="flag">
+  Show detailed daily breakdown (all days with activity)
+</ParamField>
+
+<ParamField query="-w, --weekly" type="flag">
+  Show weekly breakdown
+</ParamField>
+
+<ParamField query="-m, --monthly" type="flag">
+  Show monthly breakdown
+</ParamField>
+
+<ParamField query="-a, --all" type="flag">
+  Show all time breakdowns (daily + weekly + monthly)
+</ParamField>
+
+### Export Formats
+
+<ParamField query="-f, --format" type="string" default="text">
+  Output format:
+  - `text` - Styled terminal output with colors and charts
+  - `json` - Machine-readable JSON
+  - `csv` - CSV format for spreadsheet import
+</ParamField>
+
+### Diagnostics
+
+<ParamField query="-F, --failures" type="flag">
+  Show parse failure log (commands that fell back to raw execution)
+</ParamField>
+
+## Default Output (Summary)
+
+```
+RTK Token Savings (Global Scope)
+════════════════════════════════════════════════════════════
+
+Total commands:    1,234
+Input tokens:      2.5M
+Output tokens:     450K
+Tokens saved:      2.05M (82.0%)
+Total exec time:   15m 30s (avg 750ms)
+Efficiency meter: ████████████████████░░░░ 82.0%
+
+By Command
+────────────────────────────────────────────────────────────
+ #  Command                  Count  Saved    Avg%    Time    Impact
+────────────────────────────────────────────────────────────
+ 1. rtk cargo test             234   890K    92.1%   2.3s   ██████████
+ 2. rtk git status             456   650K    71.5%   450ms  ████████░░
+ 3. rtk tsc                     89   310K    85.2%   1.8s   ██████░░░░
+ 4. rtk grep                   123   105K    76.3%   120ms  ███░░░░░░░
+ ...
+────────────────────────────────────────────────────────────
+```
+
+## Output with Flags
+
+### Graph (`-g`)
+```
+Daily Savings (last 30 days)
+──────────────────────────────────────────────────────────
+01-15 │████████████████████████░░░░░░░░░░░░░░░░ 45K
+01-16 │██████████████████████████████████████░░ 62K
+01-17 │████████████████████████████░░░░░░░░░░░░ 38K
+...
+```
+
+### History (`-H`)
+```
+Recent Commands
+──────────────────────────────────────────────────────────
+01-20 14:32 ▲ rtk cargo test            -92% (890K)
+01-20 14:28 ■ rtk git status            -71% (12K)
+01-20 14:15 • rtk grep "TODO"           -76% (8K)
+...
+```
+
+**Legend:**
+- `▲` - High savings (≥70%)
+- `■` - Medium savings (30-70%)
+- `•` - Low savings (&lt;30%)
+
+### Quota (`-q`)
+```
+Monthly Quota Analysis
+──────────────────────────────────────────────────────────
+Subscription tier:         Max 20x ($200/mo)
+Estimated monthly quota:   120M
+Tokens saved (lifetime):   2.05M
+Quota preserved:           1.7%
+
+Note: Heuristic estimate based on ~44K tokens/5h (Pro baseline)
+      Actual limits use rolling 5-hour windows, not monthly caps.
+```
+
+### Project Scope (`-p`)
+```
+RTK Token Savings (Project Scope)
+════════════════════════════════════════════════════════════
+Scope: /Users/dev/projects/my-app
+
+Total commands:    156
+Input tokens:      350K
+Output tokens:     82K
+Tokens saved:      268K (76.6%)
+```
+
+### Failures (`-F`)
+```
+RTK Parse Failures
+════════════════════════════════════════════════════════════
+
+Total failures:      23
+Recovery rate:       100.0%
+
+Top Commands (by frequency):
+────────────────────────────────────────────────────────────
+    5x  git log --graph --all --decorate --oneline
+    3x  find . -name "*.rs" -type f -exec grep -H ...
+    2x  docker ps -a --format "table {{.Names}}\t{{...
+
+Recent Failures (last 10):
+────────────────────────────────────────────────────────────
+  2026-01-20 14:45 [ok] git log --graph --all
+  2026-01-20 12:30 [ok] find . -name "*.tmp" -delete
+```
+
+## JSON Export Format
+
+```json
+{
+  "summary": {
+    "total_commands": 1234,
+    "total_input": 2500000,
+    "total_output": 450000,
+    "total_saved": 2050000,
+    "avg_savings_pct": 82.0,
+    "total_time_ms": 930000,
+    "avg_time_ms": 753
+  },
+  "daily": [
+    {
+      "date": "2026-01-20",
+      "commands": 45,
+      "input_tokens": 120000,
+      "output_tokens": 28000,
+      "saved_tokens": 92000,
+      "savings_pct": 76.7,
+      "total_time_ms": 34500,
+      "avg_time_ms": 767
+    }
+  ]
+}
+```
+
+## CSV Export Format
+
+```csv
+date,commands,input_tokens,output_tokens,saved_tokens,savings_pct,total_time_ms,avg_time_ms
+2026-01-20,45,120000,28000,92000,76.67,34500,767
+2026-01-19,52,135000,31000,104000,77.04,38200,735
+```
+
+## Database Location
+
+Default: `~/.local/share/rtk/tracking.db`
+
+Customize via:
+- Environment variable: `RTK_DB_PATH=/custom/path.db`
+- Config file: `~/.config/rtk/config.toml`
+  ```toml
+  [tracking]
+  database_path = "/custom/path.db"
+  ```
+
+## Token Savings Methodology
+
+RTK measures savings by comparing:
+1. **Input tokens**: Character count of raw command output ÷ 4
+2. **Output tokens**: Character count of RTK filtered output ÷ 4
+3. **Saved tokens**: Input tokens - Output tokens
+4. **Savings %**: (Saved tokens ÷ Input tokens) × 100
+
+**Note**: Division by 4 is a rough heuristic (Claude 3.5 Sonnet averages ~4 chars/token). Actual tokenization varies by content.
+
+<CodeGroup>
+```bash Example: Default summary
+rtk gain
+# Shows overall stats + top commands
+```
+
+```bash Example: Project scope
+rtk gain -p
+# Filter to current directory only
+```
+
+```bash Example: With graph and history
+rtk gain -g -H
+# ASCII chart + recent commands
+```
+
+```bash Example: Quota analysis
+rtk gain -q -t pro
+# Show Pro tier quota savings
+```
+
+```bash Example: Full breakdown
+rtk gain -a
+# Daily + weekly + monthly stats
+```
+
+```bash Example: Export to JSON
+rtk gain -f json > savings.json
+# Machine-readable export
+```
+
+```bash Example: Check failures
+rtk gain -F
+# See commands that failed to parse
+```
+</CodeGroup>
+
+## Exit Codes
+
+- `0` - Success (always succeeds)
+
+## Related Commands
+
+- `rtk discover` - Find missed RTK opportunities in Claude Code history
+- `rtk config` - View/edit configuration
+- `rtk init --show` - Show installation status

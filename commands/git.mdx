@@ -1,0 +1,374 @@
+---
+title: "Git Commands"
+description: "Ultra-compact git operations with stat summaries and preserved exit codes"
+---
+
+## Overview
+
+RTK provides token-optimized alternatives to all common git operations. Achieve **75-92% token savings** through:
+
+- **Stat summaries**: Show file counts instead of full diffs
+- **One-line confirmations**: "ok ✓" for successful operations
+- **Compact diffs**: Condensed change summaries
+- **Exit code preservation**: Safe for CI/CD pipelines
+
+## Supported Commands
+
+All git subcommands are prefixed with `rtk git`:
+
+```bash
+rtk git status    # Compact status
+rtk git log       # One-line commits
+rtk git diff      # Stat + condensed diff
+rtk git show      # Commit details
+rtk git add       # Silent success
+rtk git commit    # Commit hash only
+rtk git push      # Branch confirmation
+rtk git pull      # File change summary
+rtk git branch    # Branch list
+rtk git fetch     # Remote update summary
+rtk git stash     # Stash operations
+rtk git worktree  # Worktree management
+```
+
+## rtk git status
+
+Compact status with file counts and icons.
+
+### Examples
+
+<CodeGroup>
+```bash Standard git status
+$ git status
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   src/main.rs
+        modified:   README.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        new_feature.rs
+
+no changes added to commit (use "git add" and/or "git commit -a")
+# 14 lines, ~300 tokens
+```
+
+```bash RTK git status
+$ rtk git status
+⚡ main | 2 modified, 1 untracked
+  M src/main.rs
+  M README.md
+  ? new_feature.rs
+# 4 lines, ~50 tokens (83% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **Branch indicator**: Shows current branch
+- **File counts**: Summary of changes
+- **Status icons**: `M` (modified), `A` (added), `D` (deleted), `?` (untracked)
+- **Compact format**: One line per file
+
+## rtk git log
+
+One-line commit history with smart truncation.
+
+### Usage
+
+```bash
+rtk git log [options]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard git log
+$ git log -n 5
+commit abc1234567890abcdef1234567890abcdef12
+Author: Jane Dev <jane@example.com>
+Date:   Mon Jan 23 10:00:00 2024 -0800
+
+    Add new feature for token optimization
+    
+    This commit implements the core filtering logic
+    and adds tests for edge cases.
+
+commit def4567890abcdef1234567890abcdef123456
+...
+# 40+ lines, ~500 tokens
+```
+
+```bash RTK git log
+$ rtk git log -n 5
+abc1234 Add new feature for token optimization
+def4567 Fix bug in grep command
+789abcd Update documentation
+...
+# 5 lines, ~100 tokens (80% savings)
+```
+</CodeGroup>
+
+### Supported Options
+
+- `-n <count>`: Limit number of commits
+- `--oneline`: Already compact (passes through)
+- `--since <date>`: Filter by date
+- `--author <name>`: Filter by author
+- `--grep <pattern>`: Search commit messages
+
+### Implementation Details
+
+From `src/git.rs:run_log()`:
+
+- Executes `git log --oneline` by default
+- Truncates to max lines (configurable)
+- Preserves commit hashes for reference
+- Strips ANSI color codes
+
+## rtk git diff
+
+Stat summary first, then condensed diff.
+
+### Usage
+
+```bash
+rtk git diff [options] [files...]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard git diff
+$ git diff
+diff --git a/src/main.rs b/src/main.rs
+index 1234567..89abcde 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -42,7 +42,7 @@ fn main() {
+-    let x = 5;
++    let x = 10;
+...
+# 50+ lines, ~2000 tokens
+```
+
+```bash RTK git diff
+$ rtk git diff
+src/main.rs    | 2 +-
+README.md      | 5 +++--
+2 files changed, 4 insertions(+), 3 deletions(-)
+
+--- Changes ---
+src/main.rs:42
+-    let x = 5;
++    let x = 10;
+...
+# 15 lines, ~500 tokens (75% savings)
+```
+</CodeGroup>
+
+### Options
+
+<ParamField path="--stat" type="flag">
+  Show only stat summary (no diff)
+</ParamField>
+
+<ParamField path="--no-compact" type="flag">
+  Disable RTK compacting, pass through raw diff
+</ParamField>
+
+<ParamField path="--cached" type="flag">
+  Show staged changes
+</ParamField>
+
+### Features
+
+- **Stat first**: File change summary before diff
+- **Smart truncation**: Shows context around changes
+- **Max lines**: Configurable truncation (default 100 lines)
+- **Exit code preservation**: Fails if diff fails
+
+## rtk git add/commit/push/pull
+
+Ultra-compact confirmations for write operations.
+
+### Examples
+
+<CodeGroup>
+```bash Standard git operations
+$ git add .
+# No output
+
+$ git commit -m "Fix bug"
+[main abc1234] Fix bug
+ 2 files changed, 10 insertions(+), 5 deletions(-)
+ create mode 100644 new_file.rs
+
+$ git push
+Enumerating objects: 5, done.
+Counting objects: 100% (5/5), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 342 bytes | 342.00 KiB/s, done.
+Total 3 (delta 1), reused 0 (delta 0)
+To github.com:user/repo.git
+   def4567..abc1234  main -> main
+# 15+ lines, ~200 tokens
+```
+
+```bash RTK git operations
+$ rtk git add .
+ok ✓
+
+$ rtk git commit -m "Fix bug"
+ok ✓ abc1234
+
+$ rtk git push
+ok ✓ main
+# 3 lines, ~15 tokens (92% savings)
+```
+</CodeGroup>
+
+### rtk git pull
+
+File change summary instead of full output:
+
+```bash
+rtk git pull
+ok ✓ 3 files +10 -2
+```
+
+Shows:
+- Files changed count
+- Lines added (`+10`)
+- Lines deleted (`-2`)
+
+## rtk git branch
+
+Compact branch list with current indicator.
+
+```bash
+rtk git branch
+* main
+  feature/new-ui
+  bugfix/fix-parser
+```
+
+## rtk git stash
+
+Stash operations with confirmations.
+
+### Examples
+
+```bash
+rtk git stash        # Stash changes
+ok ✓ stash@{0}
+
+rtk git stash list   # List stashes
+stash@{0}: WIP on main: abc1234 Fix bug
+stash@{1}: WIP on feature: def4567 Add feature
+
+rtk git stash pop    # Pop stash
+ok ✓ restored stash@{0}
+```
+
+## rtk git worktree
+
+Worktree management with compact output.
+
+```bash
+rtk git worktree list
+/path/to/main    abc1234 [main]
+/path/to/feature def4567 [feature/new-ui]
+
+rtk git worktree add ../hotfix hotfix/bug
+ok ✓ hotfix
+```
+
+## Argument Handling
+
+From `src/git.rs`, RTK uses Clap with:
+
+- `trailing_var_arg = true`: Accept arbitrary git flags
+- `allow_hyphen_values = true`: Support flags like `--oneline`, `--cached`
+- **Auto-detection**: Detects `--merges` to avoid conflicting with `--no-merges`
+
+### Example: Complex git log
+
+```bash
+rtk git log -n 10 --since="2 weeks ago" --author="Jane" --grep="fix"
+# All flags passed through to git, output compacted
+```
+
+## Exit Codes
+
+**Critical for CI/CD**: RTK preserves git exit codes.
+
+```bash
+rtk git diff --exit-code  # Exits 1 if differences found
+rtk git push              # Exits non-zero on push failure
+```
+
+### CI/CD Example
+
+```yaml
+# .github/workflows/ci.yml
+- name: Check for uncommitted changes
+  run: |
+    rtk git diff --exit-code || (
+      echo "Uncommitted changes detected"
+      exit 1
+    )
+
+- name: Push changes
+  run: rtk git push origin main
+```
+
+## Global Options
+
+RTK supports git global options:
+
+```bash
+rtk git -C /path/to/repo status     # Run in different directory
+rtk git --git-dir=/path/.git status # Specify git directory
+rtk git -c color.ui=false diff      # Set config option
+```
+
+From `src/git.rs:git_cmd()`, global options are prepended before subcommand arguments.
+
+## Token Savings Summary
+
+| Command | Standard Tokens | RTK Tokens | Savings |
+|---------|----------------|------------|----------|
+| `git status` | 300 | 50 | **-83%** |
+| `git log -n 10` | 500 | 100 | **-80%** |
+| `git diff` | 2,000 | 500 | **-75%** |
+| `git add` | 0 | 5 | N/A |
+| `git commit` | 40 | 10 | **-75%** |
+| `git push` | 200 | 10 | **-95%** |
+| `git pull` | 150 | 15 | **-90%** |
+
+## Implementation Reference
+
+Key functions in `src/git.rs`:
+
+- `run_status()`: Parses status porcelain format
+- `run_log()`: Executes with `--oneline`, truncates output
+- `run_diff()`: Runs `--stat` first, then compact diff
+- `run_commit()`: Extracts commit hash from output
+- `run_push()`/`run_pull()`: Parses refs and file changes
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="flask" href="/commands/testing">
+    Test runner optimizations (90% savings)
+  </Card>
+  <Card title="GitHub CLI" icon="github" href="/commands/github">
+    GitHub PR/issue management
+  </Card>
+</CardGroup>

@@ -1,0 +1,529 @@
+---
+title: "GitHub CLI (gh)"
+description: "Compact PR, issue, and workflow run views with 26-87% token savings"
+---
+
+## Overview
+
+RTK provides token-optimized alternatives to GitHub CLI (`gh`) commands. Achieve **26-87% token savings** through:
+
+- **JSON parsing**: Structured output from `gh` JSON format
+- **Markdown filtering**: Strip badges, HTML comments, and noise
+- **Compact lists**: Tabular format for PRs/issues
+- **Status summaries**: CI check aggregation
+
+## Supported Commands
+
+<CardGroup cols={3}>
+  <Card title="Pull Requests" icon="code-merge">
+    List, view, create, merge PRs
+  </Card>
+  <Card title="Issues" icon="circle-exclamation">
+    List, view, create, comment on issues
+  </Card>
+  <Card title="Workflow Runs" icon="play">
+    View CI/CD run status
+  </Card>
+  <Card title="Repository" icon="repo">
+    Repository info and stats
+  </Card>
+  <Card title="API" icon="code">
+    Direct GitHub API access
+  </Card>
+</CardGroup>
+
+## rtk gh pr
+
+Pull request operations with compact views.
+
+### rtk gh pr list
+
+Compact PR listing.
+
+#### Examples
+
+<CodeGroup>
+```bash Standard gh pr list
+$ gh pr list
+
+Showing 10 of 42 pull requests in user/repo
+
+#123  feat: Add token optimization  feature  user:feature-branch  ✓ Ready to merge
+#122  fix: Handle edge case in parser  bugfix  user:bugfix-parser  ✗ Changes requested
+#121  docs: Update installation guide  docs  user:update-docs  ✓ Approved
+#120  refactor: Simplify git module  refactor  user:simplify-git  ⏸ Review in progress
+...
+# 15+ lines, ~650 tokens
+```
+
+```bash RTK gh pr list
+$ rtk gh pr list
+🔀 10 of 42 PRs:
+
+#123 ✓ feat: Add token optimization [feature] @user
+#122 ✗ fix: Handle edge case in parser [bugfix] @user (changes requested)
+#121 ✓ docs: Update installation guide [docs] @user (approved)
+#120 ⏸ refactor: Simplify git module [refactor] @user
+...
+# 6 lines, ~180 tokens (72% savings)
+```
+</CodeGroup>
+
+#### Features
+
+- **Status icons**: ✓ (approved), ✗ (changes requested), ⏸ (in review)
+- **Labels**: Show PR labels in brackets
+- **Author**: Compact @username format
+- **Review state**: Show review status
+
+### rtk gh pr view
+
+Compact PR details with CI checks.
+
+#### Examples
+
+<CodeGroup>
+```bash Standard gh pr view
+$ gh pr view 123
+
+feat: Add token optimization #123
+Open • user wants to merge 3 commits into main from feature-branch
++142 − 38 • 3 changed files
+
+Reviewers:    reviewer1 (approved), reviewer2 (commented)
+Assignees:    user
+Labels:       feature, enhancement
+Projects:     Q1 2024
+Milestone:    v1.0.0
+
+<!-- This PR implements token optimization for git commands. -->
+
+This PR adds token-optimized git operations:
+
+- Compact git status output
+- One-line git log format
+- Stat summaries for git diff
+
+## Testing
+
+Ran full test suite:
+```bash
+cargo test --all
+```
+
+## Checklist
+
+- [x] Tests added
+- [x] Documentation updated
+- [ ] Changelog entry
+
+View this pull request on GitHub: https://github.com/user/repo/pull/123
+# 35+ lines, ~800 tokens
+```
+
+```bash RTK gh pr view
+$ rtk gh pr view 123
+🔀 #123 feat: Add token optimization
+Open | user:feature-branch → main | +142 -38 (3 files)
+
+Review: ✓ approved (reviewer1), 💬 commented (reviewer2)
+Labels: feature, enhancement
+Milestone: v1.0.0
+
+This PR adds token-optimized git operations:
+- Compact git status output
+- One-line git log format  
+- Stat summaries for git diff
+
+Testing: Ran full test suite
+Checklist: 2/3 complete
+
+CI checks: ✓ 3 passed, ✗ 1 failed
+  ✓ Tests (2m 34s)
+  ✓ Lint (1m 12s)
+  ✓ Build (3m 45s)
+  ✗ Coverage (threshold not met: 78% < 80%)
+
+# 18 lines, ~200 tokens (75% savings)
+```
+</CodeGroup>
+
+#### Features
+
+- **Markdown filtering**: Strips HTML comments, badges, horizontal rules
+- **Code block preservation**: Keeps code blocks intact
+- **Checklist summary**: Shows completion ratio
+- **CI aggregation**: Groups check results
+- **Review state**: Shows reviewer decisions
+
+### Markdown Filtering
+
+From `src/gh_cmd.rs:filter_markdown_body()`:
+
+```rust
+lazy_static! {
+    static ref HTML_COMMENT_RE: Regex = Regex::new(r"(?s)<!--.*?-->").unwrap();
+    static ref BADGE_LINE_RE: Regex = 
+        Regex::new(r"(?m)^\s*\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)\s*$").unwrap();
+    static ref IMAGE_ONLY_LINE_RE: Regex = 
+        Regex::new(r"(?m)^\s*!\[[^\]]*\]\([^)]*\)\s*$").unwrap();
+    static ref HORIZONTAL_RULE_RE: Regex = 
+        Regex::new(r"(?m)^\s*(?:---+|\*\*\*+|___+)\s*$").unwrap();
+}
+
+fn filter_markdown_body(body: &str) -> String {
+    let mut s = HTML_COMMENT_RE.replace_all(body, "").to_string();
+    s = BADGE_LINE_RE.replace_all(&s, "").to_string();
+    s = IMAGE_ONLY_LINE_RE.replace_all(&s, "").to_string();
+    s = HORIZONTAL_RULE_RE.replace_all(&s, "").to_string();
+    s = MULTI_BLANK_RE.replace_all(&s, "\n\n").to_string();
+    s.trim().to_string()
+}
+```
+
+Removes:
+- `<!-- HTML comments -->`
+- `[![badge](url)](link)` badge lines
+- `![image](url)` image-only lines
+- `---` / `***` / `___` horizontal rules
+- Excessive blank lines (3+ → 2)
+
+Preserves:
+- Code blocks (``` fenced or ~~~ tildes)
+- Regular markdown (headings, lists, links, bold, italic)
+- Inline images/badges (mixed with text)
+
+### rtk gh pr create
+
+Create PR with compact confirmation.
+
+```bash
+rtk gh pr create --title "feat: Add feature" --body "Description"
+✓ PR #124 created: https://github.com/user/repo/pull/124
+```
+
+### rtk gh pr merge
+
+Merge PR with compact confirmation.
+
+```bash
+rtk gh pr merge 123 --squash
+✓ PR #123 merged into main (abc1234)
+```
+
+### rtk gh pr checks
+
+CI check status for PR.
+
+<CodeGroup>
+```bash Standard gh pr checks
+$ gh pr checks 123
+All checks passed
+
+Tests       ✓  passed  2m 34s  https://github.com/user/repo/runs/123
+Lint        ✓  passed  1m 12s  https://github.com/user/repo/runs/124
+Build       ✓  passed  3m 45s  https://github.com/user/repo/runs/125
+Coverage    ✗  failed  45s     https://github.com/user/repo/runs/126
+# 6+ lines, ~200 tokens
+```
+
+```bash RTK gh pr checks
+$ rtk gh pr checks 123
+✗ 1 failed, 3 passed
+
+✓ Tests (2m 34s)
+✓ Lint (1m 12s)
+✓ Build (3m 45s)
+✗ Coverage (45s): threshold not met
+# 6 lines, ~50 tokens (75% savings)
+```
+</CodeGroup>
+
+## rtk gh issue
+
+Issue operations with compact views.
+
+### rtk gh issue list
+
+Compact issue listing.
+
+<CodeGroup>
+```bash Standard gh issue list
+$ gh issue list
+
+Showing 10 of 87 issues in user/repo
+
+#456  Bug: Parser crashes on empty input  bug, high-priority  •  Opened 2 days ago by user1
+#455  Feature request: Add JSON export  enhancement  •  Opened 5 days ago by user2
+#454  Question: How to configure hooks?  question  •  Opened 1 week ago by user3
+...
+# 12+ lines, ~450 tokens
+```
+
+```bash RTK gh issue list
+$ rtk gh issue list
+🐛 10 of 87 issues:
+
+#456 Bug: Parser crashes on empty input [bug, high-priority] @user1 (2d)
+#455 Feature request: Add JSON export [enhancement] @user2 (5d)
+#454 Question: How to configure hooks? [question] @user3 (1w)
+...
+# 5 lines, ~120 tokens (73% savings)
+```
+</CodeGroup>
+
+### rtk gh issue view
+
+Compact issue details.
+
+<CodeGroup>
+```bash Standard gh issue view
+$ gh issue view 456
+
+Bug: Parser crashes on empty input #456
+Open • user1 opened 2 days ago • 0 comments
+
+Assignees:  maintainer1
+Labels:     bug, high-priority
+Projects:   Bug Triage
+Milestone:  v1.1.0
+
+When passing an empty string to the parser, it crashes with:
+
+```
+thread 'main' panicked at 'index out of bounds: the len is 0 but the index is 0'
+```
+
+Steps to reproduce:
+1. Call `parse("")`
+2. Observe crash
+
+Expected: Should return error instead of panicking
+
+View this issue on GitHub: https://github.com/user/repo/issues/456
+# 20+ lines, ~350 tokens
+```
+
+```bash RTK gh issue view
+$ rtk gh issue view 456
+🐛 #456 Bug: Parser crashes on empty input
+Open | @user1 (2d) | 0 comments
+
+Assignees: maintainer1
+Labels: bug, high-priority
+Milestone: v1.1.0
+
+When passing empty string to parser, crashes with:
+thread 'main' panicked at 'index out of bounds'
+
+Steps: Call `parse("")` → crash
+Expected: Should return error
+
+# 11 lines, ~90 tokens (74% savings)
+```
+</CodeGroup>
+
+## rtk gh run
+
+Workflow run status with compact output.
+
+### rtk gh run list
+
+Compact workflow run list.
+
+<CodeGroup>
+```bash Standard gh run list
+$ gh run list
+
+Showing 10 workflow runs from user/repo
+
+STATUS  TITLE                         WORKFLOW  BRANCH  EVENT  ID         ELAPSED  AGE
+✓       CI: feat: Add optimization    CI        main    push   123456789  5m 23s   2m
+✗       CI: fix: Handle edge case     CI        bugfix  push   123456788  3m 12s   15m
+✓       Release: v1.0.0               Release   main    push   123456787  8m 45s   1h
+...
+# 12+ lines, ~500 tokens
+```
+
+```bash RTK gh run list
+$ rtk gh run list
+🔄 10 runs:
+
+✓ CI: feat: Add optimization (main, 5m 23s, 2m ago)
+✗ CI: fix: Handle edge case (bugfix, 3m 12s, 15m ago)
+✓ Release: v1.0.0 (main, 8m 45s, 1h ago)
+...
+# 5 lines, ~120 tokens (76% savings)
+```
+</CodeGroup>
+
+### rtk gh run view
+
+Compact workflow run details.
+
+<CodeGroup>
+```bash Standard gh run view
+$ gh run view 123456789
+
+✓ main CI · 123456789
+Triggered via push about 2 minutes ago
+
+JOBS
+✓ build (ubuntu-latest) in 2m 34s (ID 987654321)
+✓ test (ubuntu-latest) in 3m 45s (ID 987654322)
+✓ lint (ubuntu-latest) in 1m 12s (ID 987654323)
+
+For more information about a job, try: gh run view --job=<job-id>
+View this run on GitHub: https://github.com/user/repo/actions/runs/123456789
+# 12+ lines, ~300 tokens
+```
+
+```bash RTK gh run view
+$ rtk gh run view 123456789
+✓ CI run #123456789 (main, push, 2m ago)
+
+Jobs:
+  ✓ build (2m 34s)
+  ✓ test (3m 45s)
+  ✓ lint (1m 12s)
+
+Total: 5m 23s
+# 8 lines, ~70 tokens (77% savings)
+```
+</CodeGroup>
+
+## rtk gh repo
+
+Repository information.
+
+### rtk gh repo view
+
+Compact repository details.
+
+<CodeGroup>
+```bash Standard gh repo view
+$ gh repo view user/repo
+
+user/repo
+Rust Token Killer - High-performance CLI proxy to minimize LLM token consumption
+
+  🐁 Rust  ★ 1.2k  🍴 234  👁 45  🔗 rtk-ai.app  Updated 2h ago
+
+README
+# rtk - Rust Token Killer
+...
+# 30+ lines, ~1200 tokens
+```
+
+```bash RTK gh repo view
+$ rtk gh repo view user/repo
+📑 user/repo
+Rust Token Killer - LLM token optimization
+
+Rust | ★ 1.2k | 🍴 234 | 👁 45 | Updated 2h
+URL: rtk-ai.app
+
+# 5 lines, ~80 tokens (93% savings)
+```
+</CodeGroup>
+
+## rtk gh api
+
+Direct GitHub API access (passthrough with JSON formatting).
+
+```bash
+rtk gh api repos/user/repo/pulls/123/comments
+# Returns formatted JSON (uses rtk json for structure)
+```
+
+## Implementation Details
+
+From `src/gh_cmd.rs`, key functions:
+
+### JSON Parsing
+
+```rust
+// All gh commands use --json flag
+let mut cmd = Command::new("gh");
+cmd.args(["pr", "list", "--json", "number,title,author,labels,state"]);
+
+let output = cmd.output()?;
+let json: Value = serde_json::from_str(&output.stdout)?;
+
+// Extract fields
+for pr in json.as_array() {
+    let number = pr["number"].as_i64()?;
+    let title = pr["title"].as_str()?;
+    let author = pr["author"]["login"].as_str()?;
+    // ...
+}
+```
+
+### Markdown Filtering Strategy
+
+1. **Split by code blocks**: Preserve ``` and ~~~ fenced blocks
+2. **Filter non-code segments**: Apply regex to remove noise
+3. **Reassemble**: Combine filtered text + preserved code blocks
+4. **Final cleanup**: Collapse excessive whitespace
+
+### Status Icons
+
+```rust
+fn status_icon(state: &str) -> &'static str {
+    match state {
+        "APPROVED" => "✓",
+        "CHANGES_REQUESTED" => "✗",
+        "COMMENTED" | "PENDING" => "💬",
+        "SUCCESS" => "✓",
+        "FAILURE" => "✗",
+        "IN_PROGRESS" => "⏸",
+        _ => "●",
+    }
+}
+```
+
+## Token Savings Summary
+
+| Command | Standard Tokens | RTK Tokens | Savings |
+|---------|----------------|------------|----------|
+| `gh pr list` (10 PRs) | 650 | 180 | **-72%** |
+| `gh pr view` (with body) | 800 | 200 | **-75%** |
+| `gh pr checks` (4 checks) | 200 | 50 | **-75%** |
+| `gh issue list` (10 issues) | 450 | 120 | **-73%** |
+| `gh issue view` (with body) | 350 | 90 | **-74%** |
+| `gh run list` (10 runs) | 500 | 120 | **-76%** |
+| `gh run view` (3 jobs) | 300 | 70 | **-77%** |
+| `gh repo view` (with README) | 1,200 | 80 | **-93%** |
+
+## CI/CD Integration
+
+All gh commands preserve exit codes:
+
+```yaml
+# .github/workflows/pr-check.yml
+name: PR Checks
+
+on: pull_request
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for checks
+        run: |
+          rtk gh pr checks ${{ github.event.pull_request.number }}
+      - name: Check approval
+        run: |
+          rtk gh pr view ${{ github.event.pull_request.number }} | grep "approved"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="File Operations" icon="folder" href="/commands/file-operations">
+    File listing, reading, and search
+  </Card>
+  <Card title="Git Commands" icon="code-branch" href="/commands/git">
+    Git operation optimizations
+  </Card>
+</CardGroup>

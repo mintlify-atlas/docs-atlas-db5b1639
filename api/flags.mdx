@@ -1,0 +1,313 @@
+---
+title: 'Global Flags'
+description: 'Global options available for all RTK commands'
+---
+
+## Overview
+
+RTK supports global flags that work with all commands. These flags must appear **before** the subcommand.
+
+## Syntax
+
+```bash
+rtk [GLOBAL_FLAGS] <COMMAND> [ARGS...]
+```
+
+## Global Flags
+
+### Verbosity
+
+<ParamField query="-v, -vv, -vvv" type="flag">
+  Increase verbosity level:
+  
+  - `-v` - Basic diagnostics (command routing, token counts)
+  - `-vv` - Detailed processing (filter steps, regex matches)
+  - `-vvv` - Full debug (all internal state)
+  
+  **Use when:**
+  - Debugging RTK behavior
+  - Understanding token savings
+  - Reporting issues
+</ParamField>
+
+### Ultra-Compact Mode
+
+<ParamField query="-u, --ultra-compact" type="flag">
+  Enable Level 2 optimizations:
+  
+  - ASCII icons instead of emoji (📊 → [i])
+  - Inline format (no extra spacing)
+  - Maximum density output
+  
+  **Use when:**
+  - Every token counts
+  - Non-emoji terminal
+  - Piping to other tools
+</ParamField>
+
+### Skip Environment Validation
+
+<ParamField query="--skip-env" type="flag">
+  Set `SKIP_ENV_VALIDATION=1` for child processes.
+  
+  Affects:
+  - `rtk next` - Next.js builds
+  - `rtk tsc` - TypeScript compiler
+  - `rtk lint` - Linters
+  - `rtk prisma` - Prisma CLI
+  
+  **Use when:**
+  - Environment validation is too strict
+  - Local dev setup differs from production
+  - CI/CD environment issues
+</ParamField>
+
+## Flag Placement
+
+Global flags **must** come before the subcommand:
+
+```bash
+# ✅ Correct
+rtk -v git status
+rtk -vv --ultra-compact cargo test
+rtk --skip-env next build
+
+# ❌ Wrong
+rtk git status -v        # -v ignored (passed to git)
+rtk cargo test -vv       # -vv ignored (passed to cargo)
+```
+
+## Verbosity Examples
+
+### Level 1 (`-v`)
+
+Basic diagnostics:
+
+```bash
+rtk -v git status
+```
+
+**Output:**
+```
+Git status output:
+📌 main...origin/main
+✅ Staged: 2 files
+...
+
+Chars: 1234 → 456 (63% reduction)
+```
+
+### Level 2 (`-vv`)
+
+Detailed processing:
+
+```bash
+rtk -vv grep "TODO" src
+```
+
+**Output:**
+```
+grep: 'TODO' in src
+Detected language: Unknown (stdin has no extension)
+Lines: 1234 -> 567 (54.0% reduction)
+🔍 12 in 3F:
+...
+```
+
+### Level 3 (`-vvv`)
+
+Full debug (includes internal state, regex matches, etc.):
+
+```bash
+rtk -vvv read main.rs
+```
+
+**Output:**
+```
+Reading: src/main.rs (filter: minimal)
+Detected language: Rust
+Filter: MinimalFilter
+Lines: 500 -> 280 (44.0% reduction)
+Tokens: original=2000, filtered=1120
+...
+```
+
+## Ultra-Compact Examples
+
+### Normal Output
+
+```bash
+rtk gain
+```
+
+```
+RTK Token Savings (Global Scope)
+════════════════════════════════════════════════════════════
+
+Total commands:    1,234
+Input tokens:      2.5M
+Output tokens:     450K
+Tokens saved:      2.05M (82.0%)
+Efficiency meter: ████████████████████░░░░ 82.0%
+
+📊 By Command
+```
+
+### Ultra-Compact Output
+
+```bash
+rtk -u gain
+```
+
+```
+RTK Token Savings (Global)
+Cmds:1234 In:2.5M Out:450K Saved:2.05M (82%)
+[By Command]
+```
+
+## Skip-Env Flag
+
+### Problem: Next.js Env Validation
+
+```bash
+rtk next build
+```
+
+**Error:**
+```
+Error: Missing required environment variables:
+  - DATABASE_URL
+  - NEXTAUTH_SECRET
+```
+
+### Solution: Skip Validation
+
+```bash
+rtk --skip-env next build
+```
+
+**Success:**
+```
+✅ Next.js build complete
+   Routes: 12
+   Bundles: 450KB (gzip)
+```
+
+### How It Works
+
+Sets `SKIP_ENV_VALIDATION=1` before running:
+- Next.js (next build, next dev)
+- TypeScript (tsc)
+- Linters (eslint, etc.)
+- Prisma (prisma generate, etc.)
+
+## Combining Flags
+
+```bash
+# Multiple flags
+rtk -vv -u --skip-env next build
+
+# Short form
+rtk -vvu --skip-env cargo test
+
+# Long form
+rtk --ultra-compact --skip-env tsc --noEmit
+```
+
+## Flag Interaction with Subcommands
+
+### Git Flags
+
+```bash
+# ✅ Global flags before 'git'
+rtk -v git -C /path/to/repo status
+
+# ❌ Wrong order
+rtk git -v -C /path/to/repo status  # -v passed to git
+```
+
+### Grep Flags
+
+```bash
+# ✅ Global flags before 'grep'
+rtk -vv grep -i "error" logs/
+
+# ❌ Wrong order
+rtk grep -vv -i "error" logs/  # -vv passed to ripgrep
+```
+
+## When to Use Each Flag
+
+### Verbosity (`-v, -vv, -vvv`)
+
+**Use `-v` when:**
+- Verifying RTK is actually reducing tokens
+- Checking filter behavior
+- Confirming command routing
+
+**Use `-vv` when:**
+- Debugging filter logic
+- Understanding why something was filtered out
+- Tuning filter parameters
+
+**Use `-vvv` when:**
+- Reporting bugs
+- Contributing to RTK
+- Deep debugging
+
+### Ultra-Compact (`-u`)
+
+**Use when:**
+- Every token is critical (large outputs)
+- Terminal doesn't support emoji
+- Piping output to other tools
+- CI/CD logs (parseable format)
+
+**Don't use when:**
+- Human readability matters
+- Emoji provide useful visual cues
+- Output is already minimal
+
+### Skip-Env (`--skip-env`)
+
+**Use when:**
+- Environment validation blocks builds
+- Local dev environment differs from prod
+- CI/CD has incomplete env vars
+- Testing with partial configuration
+
+**Don't use when:**
+- Env validation catches real issues
+- Production builds (always validate)
+- You can fix the env vars properly
+
+<CodeGroup>
+```bash Example: Debug mode
+rtk -vv git diff
+# See what RTK is filtering
+```
+
+```bash Example: Maximum compression
+rtk -u cargo test
+# ASCII icons, inline format
+```
+
+```bash Example: Skip validation
+rtk --skip-env next build
+# Bypass Next.js env checks
+```
+
+```bash Example: All flags
+rtk -vvv -u --skip-env tsc
+# Full debug + ultra-compact + skip env
+```
+</CodeGroup>
+
+## Exit Codes
+
+Global flags don't affect exit codes - they're always passed through from the underlying command.
+
+## Related Commands
+
+- All RTK commands support global flags
+- See command-specific docs for subcommand flags

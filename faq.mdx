@@ -1,0 +1,279 @@
+---
+title: FAQ
+description: Frequently asked questions about RTK
+---
+
+# Frequently Asked Questions
+
+Common questions about RTK (Rust Token Killer) and how it works.
+
+## General
+
+<AccordionGroup>
+  <Accordion title="What is RTK?">
+    **RTK (Rust Token Killer)** is a high-performance CLI proxy that minimizes LLM token consumption by filtering and compressing command outputs. It sits between your shell commands and the LLM (like Claude Code), processing outputs to save 60-90% of tokens on common development operations.
+    
+    RTK achieves this through:
+    - **Smart Filtering**: Removes noise (comments, whitespace, boilerplate)
+    - **Grouping**: Aggregates similar items (files by directory, errors by type)
+    - **Truncation**: Keeps relevant context, cuts redundancy
+    - **Deduplication**: Collapses repeated log lines with counts
+    
+    <Note>
+      In a typical 30-minute Claude Code session, RTK can reduce token usage from ~150,000 to ~45,000 tokens - a **70% reduction**.
+    </Note>
+  </Accordion>
+
+  <Accordion title="How does RTK work?">
+    RTK acts as a **transparent proxy** between your commands and their output:
+    
+    ```
+    Without rtk:
+    Claude → shell → git → 2,000 tokens (raw output) → Claude
+    
+    With rtk:
+    Claude → shell → RTK → git → 2,000 tokens raw
+                      ↓ filter · group · dedup · truncate
+                      ↓ ~200 tokens (filtered) → Claude
+    ```
+    
+    When you run `rtk git status`, RTK:
+    1. Executes the real `git status` command
+    2. Captures the full output
+    3. Applies command-specific filtering strategies
+    4. Returns only the essential information
+    5. Tracks token savings in SQLite for analytics
+  </Accordion>
+
+  <Accordion title="Is RTK safe to use?">
+    **Yes.** RTK is designed with safety as a priority:
+    
+    - **Read-only operation**: RTK only filters output, it never modifies your files or git history
+    - **Graceful degradation**: If filtering fails, RTK falls back to raw command execution
+    - **Exit code preservation**: RTK preserves the original command's exit code for CI/CD compatibility
+    - **No network access**: RTK runs entirely locally, no data sent to external services
+    - **Open source**: All code is available at https://github.com/rtk-ai/rtk for review
+    - **Backup system**: Hook installation creates automatic backups (`settings.json.bak`)
+    
+    The auto-rewrite hook is also safe:
+    - Only rewrites known commands to their rtk equivalents
+    - Never modifies heredocs or scripts
+    - Passes through unrecognized commands unchanged
+  </Accordion>
+
+  <Accordion title="Does RTK modify my commands?">
+    **No.** RTK never modifies the commands themselves - it only filters the output.
+    
+    When you run `rtk git status`, RTK:
+    - Executes the **exact** `git status` command
+    - Captures the output
+    - Filters the output before displaying it
+    
+    The auto-rewrite hook transparently rewrites commands (e.g., `git status` → `rtk git status`) **before** execution, but the underlying git command remains unchanged.
+    
+    All git operations (add, commit, push, etc.) are executed exactly as you specified - RTK just makes the output more concise.
+  </Accordion>
+</AccordionGroup>
+
+## Performance
+
+<AccordionGroup>
+  <Accordion title="Why does &lt;10ms startup time matter?">
+    Claude Code users expect CLI tools to be **instant**. Any perceptible delay (>10ms) breaks the developer flow and creates a poor user experience.
+    
+    RTK achieves &lt;10ms startup through:
+    - **Zero async overhead**: Single-threaded, no tokio runtime
+    - **Lazy regex compilation**: Compile once with `lazy_static!`, reuse forever
+    - **Minimal allocations**: Borrow over clone, in-place filtering
+    - **No config I/O**: Zero file reads on startup (config loaded on-demand)
+    
+    This means RTK feels as fast as native git/cargo/npm commands, making it practical for everyday use.
+    
+    <Note>
+      You can benchmark RTK yourself: `hyperfine 'rtk git status' 'git status'`
+    </Note>
+  </Accordion>
+
+  <Accordion title="What's the performance impact of using RTK?">
+    **Negligible.** RTK adds &lt;10ms overhead per command:
+    
+    | Metric | Target | Typical |
+    |--------|--------|--------|
+    | Startup time | &lt;10ms | ~5ms |
+    | Memory overhead | &lt;5MB | ~2MB |
+    | Token savings | 60-90% | ~70% |
+    
+    The token savings far outweigh the minimal performance cost. For example:
+    - Running `git log` without RTK: 0ms overhead, but costs 500 tokens
+    - Running `rtk git log`: +5ms overhead, but costs only 100 tokens (80% savings)
+    
+    In a typical Claude Code session, the few milliseconds of overhead save thousands of tokens, which translates to:
+    - Faster LLM responses (less data to process)
+    - Lower API costs
+    - Better context management
+  </Accordion>
+</AccordionGroup>
+
+## Hook Modes
+
+<AccordionGroup>
+  <Accordion title="What's the difference between hook modes?">
+    RTK offers two hook patterns:
+    
+    | Aspect | Auto-Rewrite Hook | Suggest Hook |
+    |--------|-------------------|-------------|
+    | **Strategy** | Intercepts and modifies command before execution | Emits system reminder when rtk-compatible command detected |
+    | **Effect** | Claude never sees the original command | Claude receives hint to use rtk, decides autonomously |
+    | **Adoption** | 100% (forced) | ~70-85% (depends on Claude's adherence) |
+    | **Use Case** | Production workflows, guaranteed savings | Learning mode, auditing, explicit control |
+    | **Overhead** | Zero (transparent rewrite) | Minimal (reminder message in context) |
+    
+    **Recommendation**: Use auto-rewrite hook for maximum savings. Use suggest hook only if you want to audit Claude's command choices or prefer explicit control.
+  </Accordion>
+
+  <Accordion title="How do I switch between hook modes?">
+    **To use auto-rewrite hook (recommended):**
+    ```bash
+    rtk init -g
+    # Restart Claude Code
+    ```
+    
+    **To use suggest hook:**
+    ```bash
+    # Copy the suggest hook instead
+    cp .claude/hooks/rtk-suggest.sh ~/.claude/hooks/rtk-suggest.sh
+    chmod +x ~/.claude/hooks/rtk-suggest.sh
+    
+    # Then edit ~/.claude/settings.json to reference rtk-suggest.sh
+    # Restart Claude Code
+    ```
+    
+    <Note>
+      Only one hook can be active at a time. Choose the one that fits your workflow.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Installation & Setup
+
+<AccordionGroup>
+  <Accordion title="What's the difference between global and local installation?">
+    RTK offers multiple installation scopes:
+    
+    | Command | Scope | Hook | RTK.md | CLAUDE.md | Tokens in Context | Use Case |
+    |---------|-------|------|--------|-----------|-------------------|----------|
+    | `rtk init -g` | Global | ✅ | ✅ (10 lines) | @RTK.md | ~10 | **Recommended**: All projects, automatic |
+    | `rtk init -g --claude-md` | Global | ❌ | ❌ | Full (137 lines) | ~2000 | Legacy compatibility |
+    | `rtk init` | Local | ❌ | ❌ | Full (137 lines) | ~2000 | Single project, no hook |
+    
+    **Recommendation**: Use `rtk init -g` for global hook-first installation. This gives you:
+    - Automatic command rewriting across all projects
+    - Minimal context overhead (~10 tokens vs ~2000 tokens)
+    - No need to remember to use rtk prefix
+  </Accordion>
+
+  <Accordion title="Do I need to restart Claude Code after installation?">
+    **Yes.** Settings changes require a full restart of Claude Code to take effect.
+    
+    After running `rtk init -g`:
+    1. Close all Claude Code windows
+    2. Restart Claude Code
+    3. Test with `git status` to verify hook is working
+  </Accordion>
+</AccordionGroup>
+
+## Token Tracking
+
+<AccordionGroup>
+  <Accordion title="How accurate is RTK's token calculation?">
+    RTK uses **character-based estimation** for token counts:
+    - **Input tokens**: Character count of raw command output ÷ 4
+    - **Output tokens**: Character count of filtered output ÷ 4
+    - **Savings**: (input - output) / input × 100%
+    
+    This approximation is **within 5-10% of actual LLM tokenization** for most text. It's not perfect, but it's:
+    - Fast (no external API calls)
+    - Consistent (reproducible results)
+    - Good enough for analytics and trend tracking
+    
+    <Note>
+      For precise tokenization, LLMs would need to use their actual tokenizer (e.g., Claude's tokenizer), but this would add network latency and API costs. The character-based estimate is a practical compromise.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Where is my token data stored?">
+    RTK stores tracking data in a local SQLite database:
+    
+    **Default location**: `~/.local/share/rtk/history.db`
+    
+    You can customize this location:
+    
+    **Environment variable** (highest priority):
+    ```bash
+    export RTK_DB_PATH="/path/to/custom.db"
+    ```
+    
+    **Config file** (`~/.config/rtk/config.toml`):
+    ```toml
+    [tracking]
+    database_path = "/path/to/custom.db"
+    ```
+    
+    The database includes:
+    - Command executed
+    - Input/output token counts
+    - Savings percentage
+    - Execution time
+    - Timestamp
+    
+    RTK automatically cleans up records older than 90 days.
+  </Accordion>
+</AccordionGroup>
+
+## Cross-Platform Support
+
+<AccordionGroup>
+  <Accordion title="Does RTK work on Windows?">
+    **Yes.** RTK supports Windows, macOS, and Linux.
+    
+    **Installation on Windows**:
+    - Download pre-built binary from [releases](https://github.com/rtk-ai/rtk/releases)
+    - Or build from source: `cargo install --git https://github.com/rtk-ai/rtk`
+    
+    **Note**: The auto-rewrite hook requires bash, which is available in:
+    - Git Bash (comes with Git for Windows)
+    - WSL (Windows Subsystem for Linux)
+    - PowerShell (with some limitations)
+    
+    <Warning>
+      PowerShell support for hooks is experimental. For best results on Windows, use Git Bash or WSL.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Which shells does RTK support?">
+    RTK works with all POSIX-compliant shells:
+    - ✅ bash
+    - ✅ zsh
+    - ✅ fish
+    - ✅ sh
+    
+    The auto-rewrite hook is written in bash but uses POSIX-compliant syntax for maximum compatibility.
+    
+    **Note**: For fish shell users, adjust the PATH setup:
+    ```fish
+    set -gx PATH $HOME/.cargo/bin $PATH
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Still Have Questions?
+
+**Join the community:**
+- GitHub Issues: https://github.com/rtk-ai/rtk/issues
+- Email: contact@rtk-ai.app
+- Website: https://www.rtk-ai.app
+
+**Additional resources:**
+- [Troubleshooting Guide](/troubleshooting)
+- [Installation Guide](/installation)
+- [Command Reference](/commands)

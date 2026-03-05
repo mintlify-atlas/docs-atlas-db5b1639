@@ -1,0 +1,141 @@
+---
+title: 'rtk grep'
+description: 'Compact search with grouped results'
+---
+
+## Overview
+
+Searches files using ripgrep (or grep fallback) with token-optimized output grouped by file. Automatically truncates long lines and limits results.
+
+## Syntax
+
+```bash
+rtk grep [OPTIONS] <PATTERN> [PATH]
+```
+
+## Arguments
+
+<ParamField path="PATTERN" type="string" required>
+  Search pattern (regex supported). BRE alternation `\|` auto-converted to PCRE `|`.
+</ParamField>
+
+<ParamField path="PATH" type="string" default=".">
+  Directory to search (recursive by default)
+</ParamField>
+
+## Options
+
+<ParamField query="-l, --max-len" type="number" default="80">
+  Maximum line length in results. Long lines truncated with `...` around match.
+</ParamField>
+
+<ParamField query="-m, --max" type="number" default="50">
+  Maximum total results to show across all files.
+</ParamField>
+
+<ParamField query="-c, --context-only" type="flag">
+  Show only 20 chars before/after match instead of full line.
+</ParamField>
+
+<ParamField query="-t, --file-type" type="string" optional>
+  Filter by file type: `ts`, `py`, `rust`, `js`, etc. (ripgrep type names)
+</ParamField>
+
+<ParamField query="-n, --line-numbers" type="flag">
+  Show line numbers (always enabled, accepted for grep/rg compatibility)
+</ParamField>
+
+### Pass-through Arguments
+
+Additional ripgrep flags supported via trailing args:
+- `-i` - Case-insensitive search
+- `-w` - Match whole words
+- `-A N` - Show N lines after match
+- `-B N` - Show N lines before match
+- `--glob PATTERN` - Include/exclude files by glob
+
+## Output Format
+
+```
+🔍 12 in 3F:
+
+📄 src/main.rs (5):
+   42: pub fn run_grep(pattern: &str) -> Result<()> {
+   67:     let matches = grep_impl(pattern)?;
+  ... +3 more
+
+📄 src/lib.rs (4):
+   12: // grep helper function
+   23:     pattern.to_lowercase()
+  ... +2 more
+
+... +1 more file
+```
+
+**Format breakdown:**
+- Header: `🔍 12 in 3F` (12 matches in 3 files)
+- Per-file section with match count
+- Line numbers auto-enabled
+- Shows first 10 matches per file
+- Truncates at `--max` total results
+
+## Token Savings
+
+**75% reduction** - grouping by file and line truncation
+
+<CodeGroup>
+```bash Example: Basic search
+rtk grep "TODO" src
+# Find all TODO comments in src/
+```
+
+```bash Example: Type filter
+rtk grep -t ts "useState" .
+# Search only TypeScript files
+```
+
+```bash Example: Context only
+rtk grep -c "error" logs/
+# Show only ±20 chars around "error"
+```
+
+```bash Example: With ripgrep flags
+rtk grep -i "fixme" . -A 2 --glob '*.rs'
+# Case-insensitive, 2 lines after, Rust files only
+```
+
+```bash Example: Regex with alternation
+rtk grep "fn foo\|pub.*bar" src
+# Auto-converts BRE \| to PCRE |
+```
+</CodeGroup>
+
+## Special Behaviors
+
+### BRE to PCRE Conversion
+RTK auto-converts Basic Regular Expression alternation `\|` to Perl-Compatible `|` for ripgrep compatibility:
+```bash
+rtk grep "error\|warning"  # Works correctly
+```
+
+### Recursive by Default
+Unlike traditional grep, RTK searches recursively. The `-r` flag is ignored (ripgrep is always recursive).
+
+### Smart Truncation
+Long lines are truncated intelligently:
+- Match is centered in output
+- `...prefix...match...suffix...` format
+- Respects `--max-len` character limit
+- Handles multibyte characters (emoji, Unicode) correctly
+
+## Exit Codes
+
+- `0` - Matches found
+- `1` - No matches found
+- `2` - Error (bad regex, missing directory)
+
+## Related Commands
+
+- `rtk read` - View file contents
+- `rtk find` - Find files by name
+- `rtk ls` - List directory contents

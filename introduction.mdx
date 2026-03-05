@@ -1,0 +1,185 @@
+---
+title: Introduction
+description: Reduce LLM token consumption by 60-90% with RTK, a high-performance CLI proxy for AI coding assistants
+---
+
+# RTK - Rust Token Killer
+
+RTK is a high-performance CLI tool written in Rust that dramatically reduces LLM token consumption by filtering and compressing command outputs before they reach your AI coding assistant's context.
+
+<Note>
+**Token Savings:** RTK achieves **60-90% reduction** in tokens on common development operations.
+
+A typical 30-minute Claude Code session goes from **~150,000 tokens** down to **~45,000 tokens** - a **70% reduction**.
+</Note>
+
+## Why RTK Matters
+
+AI coding assistants like Claude Code, Cursor, and Copilot consume massive amounts of tokens when reading command outputs. Every `git status`, `npm test`, or `ls -la` sends verbose output into the LLM context - wasting tokens, hitting rate limits, and slowing down your workflow.
+
+RTK sits between your AI assistant and the shell, intelligently filtering outputs to preserve only what matters:
+
+```
+Without RTK:
+  ┌──────────┐  git status     ┌──────────┐  git status  ┌──────────┐
+  │  Claude  │ ─────────────── │  shell   │ ──────────── │   git    │
+  │   LLM    │                 │          │              │  (CLI)   │
+  └──────────┘                 └──────────┘              └──────────┘
+        ▲                                                      │
+        │              ~2,000 tokens (raw output)              │
+        └──────────────────────────────────────────────────────┘
+
+With RTK:
+  ┌──────────┐  git status     ┌──────────┐  git status  ┌──────────┐
+  │  Claude  │ ─────────────── │   RTK    │ ──────────── │   git    │
+  │   LLM    │                 │  (proxy) │              │  (CLI)   │
+  └──────────┘                 └──────────┘              └──────────┘
+        ▲                           │  ~2,000 tokens raw       │
+        │                           └──────────────────────────┘
+        │  ~200 tokens (filtered)   filter · group · dedup · truncate
+        └───────────────────────────────────────────────────────
+```
+
+## Key Benefits
+
+<CardGroup cols={2}>
+  <Card title="Massive Token Savings" icon="chart-line">
+    Save 60-90% of tokens on common operations like `git log`, `cargo test`, `npm install`.
+  </Card>
+  <Card title="Zero Workflow Changes" icon="wand-magic-sparkles">
+    Install once with hooks, and all commands are automatically optimized - no manual prefixing needed.
+  </Card>
+  <Card title="Lightning Fast" icon="bolt">
+    Written in Rust with &lt;10ms startup time. No performance overhead in your development workflow.
+  </Card>
+  <Card title="Analytics Built-In" icon="chart-bar">
+    Track your savings with `rtk gain` - see exactly how many tokens you've saved over time.
+  </Card>
+</CardGroup>
+
+## Token Savings Examples (30-min Session)
+
+Here's what RTK saves you in a typical Claude Code coding session:
+
+| Operation | Frequency | Standard | RTK | Savings |
+|-----------|-----------|----------|-----|------|
+| `ls` / `tree` | 10× | 2,000 | 400 | **-80%** |
+| `cat` / `read` | 20× | 40,000 | 12,000 | **-70%** |
+| `grep` / `rg` | 8× | 16,000 | 3,200 | **-80%** |
+| `git status` | 10× | 3,000 | 600 | **-80%** |
+| `git diff` | 5× | 10,000 | 2,500 | **-75%** |
+| `git log` | 5× | 2,500 | 500 | **-80%** |
+| `npm test` | 5× | 25,000 | 2,500 | **-90%** |
+| `docker ps` | 3× | 900 | 180 | **-80%** |
+| **Total** | | **~99,400** | **~22,880** | **-77%** |
+
+<Warning>
+**Name Collision Alert:** There are TWO different projects named "rtk":
+
+1. ✅ **Rust Token Killer** (this project) - LLM token optimizer from `rtk-ai/rtk`
+2. ❌ **Rust Type Kit** (reachingforthejack/rtk) - DIFFERENT PROJECT
+
+Verify you have the correct one:
+```bash
+rtk --version   # Should show "rtk 0.24.0" or higher
+rtk gain        # Should show token savings stats
+```
+
+If `rtk gain` doesn't work, you installed the wrong package.
+</Warning>
+
+## How It Works
+
+RTK applies four intelligent strategies based on command type:
+
+<Steps>
+  <Step title="Smart Filtering">
+    Removes noise like comments, whitespace, boilerplate progress bars, and redundant metadata.
+  </Step>
+  
+  <Step title="Grouping">
+    Aggregates similar items - files by directory, errors by type, commits by author.
+  </Step>
+  
+  <Step title="Truncation">
+    Keeps relevant context, cuts redundancy. Show first/last 10 lines instead of 1000.
+  </Step>
+  
+  <Step title="Deduplication">
+    Collapses repeated log lines with counts: `Error: timeout (×347)` instead of 347 lines.
+  </Step>
+</Steps>
+
+### Real-World Example
+
+**Standard git push output (15 lines, ~200 tokens):**
+```bash
+$ git push
+Enumerating objects: 5, done.
+Counting objects: 100% (5/5), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 342 bytes | 342.00 KiB/s, done.
+Total 3 (delta 2), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (2/2), completed with 2 local objects.
+To github.com:user/repo.git
+   abc1234..def5678  main -> main
+```
+
+**RTK git push output (1 line, ~10 tokens - 95% reduction):**
+```bash
+$ rtk git push
+ok ✓ main
+```
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="AI Coding Sessions" icon="robot">
+    Maximize your Claude Code, Cursor, or Copilot rate limits by sending 70% fewer tokens.
+  </Card>
+  <Card title="Monorepo Development" icon="folder-tree">
+    Work in large codebases without overwhelming your LLM with verbose `ls`, `tree`, or `find` outputs.
+  </Card>
+  <Card title="Test-Driven Development" icon="flask">
+    See only test failures, not the 200+ lines of passing test noise. Works with `cargo test`, `npm test`, `pytest`, `go test`.
+  </Card>
+  <Card title="Git-Heavy Workflows" icon="code-branch">
+    Condense `git log`, `git diff`, `git status` into compact summaries that preserve all critical info.
+  </Card>
+</CardGroup>
+
+## Supported Commands
+
+RTK optimizes 50+ commands across multiple ecosystems:
+
+### Git Operations
+`git status`, `git diff`, `git log`, `git add`, `git commit`, `git push`, `git pull`, `git branch`, `git fetch`, `git stash`
+
+### Test Runners
+`cargo test`, `npm test`, `pytest`, `go test`, `vitest`, `playwright test`
+
+### Package Managers  
+`npm install`, `pnpm list`, `pip install`, `cargo build`
+
+### Linters & Type Checkers
+`eslint`, `ruff check`, `tsc`, `mypy`, `golangci-lint`, `cargo clippy`
+
+### Containers
+`docker ps`, `docker logs`, `kubectl get pods`, `kubectl logs`
+
+### And More
+`ls`, `tree`, `grep`, `cat`, `curl`, `wget`, `gh pr list`, `prisma migrate`, `next build`
+
+[View full command reference →](/commands/overview)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Install RTK" icon="download" href="/installation">
+    Get RTK installed in under 5 minutes with Homebrew, cargo, or pre-built binaries.
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Follow our 5-minute guide to install, verify, and start saving tokens immediately.
+  </Card>
+</CardGroup>

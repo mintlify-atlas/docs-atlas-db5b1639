@@ -1,0 +1,213 @@
+---
+title: 'rtk lint'
+description: 'Lint with grouped rule violations'
+---
+
+## Overview
+
+Runs linters with structured output grouped by rule and file. Auto-detects linter type and formats output for maximum token efficiency.
+
+## Syntax
+
+```bash
+rtk lint [LINTER] [OPTIONS] [PATHS...]
+```
+
+## Arguments
+
+<ParamField path="LINTER" type="string" optional>
+  Linter name: `eslint`, `ruff`, `pylint`, `mypy`, or omit to auto-detect from first arg.
+</ParamField>
+
+<ParamField path="PATHS" type="string[]" default=".">
+  Files or directories to lint. Defaults to current directory.
+</ParamField>
+
+## Supported Linters
+
+### JavaScript/TypeScript - ESLint
+
+```bash
+rtk lint eslint src
+rtk lint src  # Auto-detects eslint
+```
+
+**Features:**
+- JSON output parsing
+- Grouped by rule
+- File-level summaries
+- Top 10 rules shown
+
+**Token savings: 84%**
+
+### Python - Ruff
+
+```bash
+rtk lint ruff check .
+rtk lint ruff .
+```
+
+**Features:**
+- JSON output parsing
+- Grouped by rule code
+- File context preserved
+- Auto-detects `ruff check` subcommand
+
+**Token savings: 80%**
+
+### Python - Pylint
+
+```bash
+rtk lint pylint src
+```
+
+**Features:**
+- JSON2 output format
+- Grouped by symbol (rule)
+- Message IDs shown (e.g., W0612)
+- Type breakdown (errors, warnings, conventions)
+
+**Token savings: 82%**
+
+### Python - Mypy
+
+```bash
+rtk lint mypy .
+```
+
+**Features:**
+- Text output parsing
+- Grouped by file and error code
+- Context lines preserved
+
+**Token savings: 80%**
+
+## Output Format
+
+### ESLint Example
+```
+ESLint: 12 errors, 24 warnings in 8 files
+═══════════════════════════════════════
+Top rules:
+  prefer-const (15x)
+  no-unused-vars (8x)
+  @typescript-eslint/no-explicit-any (6x)
+
+Top files:
+  src/utils.ts (10 issues)
+    prefer-const (5)
+    no-unused-vars (3)
+    semi (2)
+  src/api.ts (8 issues)
+    @typescript-eslint/no-explicit-any (4)
+    ...
+
+... +6 more files
+```
+
+### Ruff Example
+```
+Ruff: 8 issues in 3 files
+═══════════════════════════════════════
+Top rules:
+  F401: unused-import (4x)
+  E501: line-too-long (2x)
+  W291: trailing-whitespace (2x)
+
+Top files:
+  src/main.py (5 issues)
+    F401 (3)
+    E501 (2)
+```
+
+### Pylint Example
+```
+Pylint: 15 issues in 5 files
+  3 errors, 8 warnings, 4 conventions, 0 refactors
+═══════════════════════════════════════
+Top rules:
+  unused-variable (W0612) (6x)
+  undefined-variable (E0602) (3x)
+  line-too-long (C0301) (3x)
+
+Top files:
+  src/main.py (8 issues)
+    unused-variable (W0612) (4)
+    undefined-variable (E0602) (2)
+```
+
+## Auto-Detection
+
+RTK detects Python vs JavaScript linters:
+
+**Python linters** (installed via pip/pipx):
+- `ruff`, `pylint`, `mypy`, `flake8`
+- Invoked directly: `Command::new("ruff")`
+
+**JavaScript linters** (installed via npm/pnpm):
+- `eslint`, `biome`
+- Invoked via package manager: `npx eslint` or `pnpm exec eslint`
+
+## Token Savings
+
+| Linter | Savings |
+|--------|--------|
+| ESLint | 84% |
+| Ruff | 80% |
+| Pylint | 82% |
+| Mypy | 80% |
+| Generic | 70% |
+
+<CodeGroup>
+```bash Example: ESLint
+rtk lint eslint src
+# Grouped by rule and file
+```
+
+```bash Example: Ruff
+rtk lint ruff check .
+# Python linting with JSON parsing
+```
+
+```bash Example: Pylint with flags
+rtk lint pylint --disable=C0111 src
+# Custom flags passed through
+```
+
+```bash Example: Mypy
+rtk lint mypy --strict .
+# Type checking grouped by file
+```
+
+```bash Example: Auto-detect
+rtk lint src
+# Auto-detects eslint from context
+```
+</CodeGroup>
+
+## Tee Output Recovery
+
+On failure (linting errors found), full output is saved:
+
+```
+[full output: ~/.local/share/rtk/tee/lint-abc123.txt]
+```
+
+Read full details without re-running:
+```bash
+rtk read ~/.local/share/rtk/tee/lint-abc123.txt
+```
+
+## Exit Codes
+
+Preserves linter exit codes:
+- `0` - No issues found
+- `1` - Linting errors found
+- `2` - Configuration or runtime error
+
+## Related Commands
+
+- `rtk prettier` - Format checker (70% savings)
+- `rtk tsc` - TypeScript compiler (83% savings)
+- `rtk cargo clippy` - Rust linter (80% savings)
+- `rtk err` - Generic error filter

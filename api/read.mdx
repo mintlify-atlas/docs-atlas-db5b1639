@@ -1,0 +1,124 @@
+---
+title: 'rtk read'
+description: 'Intelligent file reading with language-aware filtering'
+---
+
+## Overview
+
+Reads files with smart filtering based on language detection. Strips comments, empty lines, and optionally function bodies for aggressive token reduction.
+
+## Syntax
+
+```bash
+rtk read [OPTIONS] <FILE>
+cat <file> | rtk read -  # Read from stdin
+```
+
+## Arguments
+
+<ParamField path="FILE" type="path" required>
+  File to read, or `-` for stdin
+</ParamField>
+
+## Options
+
+<ParamField query="-l, --level" type="string" default="minimal">
+  Filter level:
+  - `none` - No filtering, raw output
+  - `minimal` - Remove comments and blank lines (40-60% reduction)
+  - `aggressive` - Remove comments, blanks, and function bodies (70-80% reduction)
+</ParamField>
+
+<ParamField query="-m, --max-lines" type="number" optional>
+  Maximum lines to show. Smart truncation preserves critical code sections.
+</ParamField>
+
+<ParamField query="-n, --line-numbers" type="flag">
+  Show line numbers in output
+</ParamField>
+
+## Language Detection
+
+Automatic detection by file extension:
+
+- **Rust** (.rs) - Comments, attributes, test modules
+- **Python** (.py) - Docstrings, comments, type hints
+- **JavaScript/TypeScript** (.js, .ts, .tsx, .jsx) - JSDoc, comments, imports
+- **Java** (.java) - Javadoc, comments, annotations
+- **Go** (.go) - Comments, build tags
+- **C/C++** (.c, .cpp, .h, .hpp) - Comments, preprocessor
+- **Unknown** - Generic text filtering
+
+## Filter Levels
+
+### Minimal (Default)
+- Removes single-line comments (`//`, `#`)
+- Removes multi-line comments (`/* */`, `'''`, `"""`)
+- Removes empty lines
+- Preserves all code and type signatures
+- **40-60% token reduction**
+
+### Aggressive
+- Everything from `minimal`
+- Removes function bodies (keeps signatures)
+- Removes test code blocks
+- Preserves interfaces, types, constants
+- **70-80% token reduction**
+- Use when you only need API signatures
+
+## Token Savings
+
+**60% reduction** (minimal) - preserves code structure
+
+**80% reduction** (aggressive) - API overview only
+
+<CodeGroup>
+```bash Example: Basic usage
+rtk read src/main.rs
+# Shows filtered Rust code
+```
+
+```bash Example: Aggressive filtering
+rtk read --level aggressive src/lib.rs
+# Shows only function signatures and types
+```
+
+```bash Example: With line numbers
+rtk read -n --max-lines 50 src/config.rs
+# First 50 lines with line numbers
+```
+
+```bash Example: From stdin
+cat large_file.py | rtk read - --level minimal
+# Filter piped input
+```
+</CodeGroup>
+
+## Output Format
+
+With `--line-numbers`:
+```
+  1 │ use anyhow::Result;
+  2 │ use std::path::PathBuf;
+  3 │ 
+  4 │ pub fn run(args: &[String]) -> Result<()> {
+```
+
+Without line numbers:
+```rust
+use anyhow::Result;
+use std::path::PathBuf;
+
+pub fn run(args: &[String]) -> Result<()> {
+```
+
+## Exit Codes
+
+- `0` - Success
+- `1` - File not found or permission denied
+
+## Related Commands
+
+- `rtk grep` - Search file contents
+- `rtk ls` - List directory contents
+- `rtk json` - View JSON structure

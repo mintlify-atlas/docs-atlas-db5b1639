@@ -1,0 +1,480 @@
+---
+title: Architecture
+description: RTK system architecture and design patterns
+---
+
+This document provides a comprehensive overview of RTK's architecture, including the proxy pattern, module organization, and filtering strategies.
+
+## System Overview
+
+### Proxy Pattern Architecture
+
+RTK uses a **command proxy architecture** that sits between the user and underlying CLI tools:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│              rtk - Token Optimization Proxy                │
+└────────────────────────────────────────────────────────────┘
+
+User Input       CLI Layer        Router        Module Layer
+──────────       ─────────        ──────        ────────────
+
+$ rtk git log  ─→ Clap Parser ─→ Commands ─→  git::run()
+  -v --oneline    (main.rs)      enum match
+                  • Parse args                  Execute: git log
+                  • Extract flags               Capture output
+                  • Route command                     ↓
+                                                Filter/Compress
+                                                      ↓
+$ 3 commits   ←─ Terminal    ←─ Format    ←─ Compact Stats
+  +142/-89       colored         optimized    (90% reduction)
+                 output                             ↓
+                                              tracking::track()
+                                                      ↓
+                                              SQLite INSERT
+```
+
+### Key Components
+
+| Component | Location | Responsibility |
+|-----------|----------|----------------|
+| **CLI Parser** | main.rs | Clap-based argument parsing, global flags |
+| **Command Router** | main.rs | Dispatch to specialized modules |
+| **Module Layer** | src/*_cmd.rs, src/git.rs | Command execution + filtering |
+| **Shared Utils** | utils.rs | Package manager detection, text processing |
+| **Filter Engine** | filter.rs | Language-aware code filtering |
+| **Tracking** | tracking.rs | SQLite-based token metrics |
+| **Config** | config.rs, init.rs | User preferences, LLM integration |
+
+### Design Principles
+
+1. **Single Responsibility**: Each module handles one command type
+2. **Minimal Overhead**: ~5-15ms proxy overhead per command
+3. **Exit Code Preservation**: CI/CD reliability through proper exit code propagation
+4. **Fail-Safe**: If filtering fails, fall back to original output
+5. **Transparent**: Users can always see raw output with `-v` flags
+
+## Command Lifecycle
+
+### Six-Phase Execution Flow
+
+<Steps>
+  <Step title="PARSE">
+    Clap parser extracts command, arguments, and global flags:
+    ```rust
+    // Input: rtk git log --oneline -5 -v
+    // Extracts:
+    //   • Command: Commands::Git
+    //   • Args: ["log", "--oneline", "-5"]
+    //   • Flags: verbose = 1
+    ```
+  </Step>
+
+  <Step title="ROUTE">
+    Main.rs matches the command enum and routes to the appropriate module:
+    ```rust
+    match Commands::Git { args, .. } {
+        // Routes to git::run(args, verbose)
+    }
+    ```
+  </Step>
+
+  <Step title="EXECUTE">
+    Module executes the underlying command and captures output:
+    ```rust
+    let output = Command::new("git")
+        .args(["log", "--oneline", "-5"])
+        .output()?;
+    // Captures: stdout, stderr, exit_code
+    ```
+  </Step>
+
+  <Step title="FILTER">
+    Module applies filtering strategy based on command type:
+    ```rust
+    // Strategy: Stats Extraction
+    // Input: 500 chars → Output: 20 chars (96% reduction)
+    let filtered = format_git_output(stdout, "log", verbose);
+    ```
+  </Step>
+
+  <Step title="PRINT">
+    Filtered output is displayed to the user:
+    ```rust
+    if verbose > 0 {
+        eprintln!("Git log summary:"); // Debug
+    }
+    println!("{}", colored_output); // User output
+    ```
+  </Step>
+
+  <Step title="TRACK">
+    Token savings are recorded in SQLite database:
+    ```rust
+    tracking::track(
+        "git log --oneline -5",
+        "rtk git log --oneline -5",
+        &raw_output,    // 500 chars → 125 tokens
+        &filtered       // 20 chars → 5 tokens
+    );
+    // Records: 120 tokens saved (96% savings)
+    ```
+  </Step>
+</Steps>
+
+### Verbosity Levels
+
+```bash
+# No flags: Compact output only
+rtk git log
+
+# -v (Level 1): Show debug messages
+rtk git log -v
+# Output: "Git log summary:"
+
+# -vv (Level 2): Show command being executed
+rtk git log -vv
+# Output: "Executing: git log"
+
+# -vvv (Level 3): Show raw output before filtering
+rtk git log -vvv
+# Output: Full unfiltered git log
+```
+
+## Module Organization
+
+### Module Categories
+
+RTK has **51 total modules** organized into categories:
+
+| Category | Modules | Examples | Savings |
+|----------|---------|----------|--------|
+| **Git** | 1 module | status, diff, log, add, commit | 85-99% |
+| **Code Search** | 3 modules | grep, diff, find | 50-85% |
+| **File Operations** | 2 modules | ls, read | 40-90% |
+| **Execution** | 3 modules | err, test, smart | 50-99% |
+| **JS/TS Stack** | 8 modules | lint, tsc, next, prettier, vitest, pnpm | 70-99.5% |
+| **Python** | 3 modules | ruff, pytest, pip | 70-90% |
+| **Go** | 2 modules | go test/build/vet, golangci-lint | 75-90% |
+| **Infrastructure** | 18 modules | utils, filter, tracking, config, tee | N/A |
+
+### Command Module Pattern
+
+Each command module follows a standard pattern:
+
+```rust
+// src/example_cmd.rs
+
+use anyhow::{Context, Result};
+use std::process::Command;
+use crate::{tracking, utils};
+
+/// Public entry point called by main.rs router
+pub fn run(args: &[String], verbose: u8) -> Result<()> {
+    // 1. Execute underlying command
+    let raw_output = execute_command(args)?;
+
+    // 2. Apply filtering strategy
+    let filtered = filter_output(&raw_output, verbose);
+
+    // 3. Print result
+    println!("{}", filtered);
+
+    // 4. Track token savings
+    tracking::track(
+        "original_command",
+        "rtk command",
+        &raw_output,
+        &filtered
+    );
+
+    Ok(())
+}
+
+fn execute_command(args: &[String]) -> Result<String> {
+    let output = Command::new("tool")
+        .args(args)
+        .output()
+        .context("Failed to execute tool")?;
+
+    // Preserve exit codes (critical for CI/CD)
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("{}", stderr);
+        std::process::exit(output.status.code().unwrap_or(1));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn filter_output(raw: &str, verbose: u8) -> String {
+    // Apply filtering strategy
+    // See "Filtering Strategies" section below
+}
+```
+
+## Filtering Strategies
+
+### Strategy Matrix
+
+RTK uses 12 different filtering strategies optimized for different output types:
+
+#### 1. Stats Extraction (90-99% reduction)
+
+```
+Raw: 5000 lines → Count/aggregate → "3 files, +142/-89"
+```
+
+**Used by**: git status, git log, git diff, pnpm list
+
+#### 2. Error Only (60-80% reduction)
+
+```
+stdout+stderr Mixed → stderr only → "Error: X failed"
+```
+
+**Used by**: runner (err mode), test failures
+
+#### 3. Grouping by Pattern (80-90% reduction)
+
+```
+100 errors scattered → Group by rule → "no-unused-vars: 23"
+                                        "semi: 45"
+```
+
+**Used by**: lint, tsc, grep (group by file/rule/error code)
+
+#### 4. Deduplication (70-85% reduction)
+
+```
+Repeated log lines → Unique + count → "[ERROR] ... (×5)"
+```
+
+**Used by**: log_cmd (identify patterns, count occurrences)
+
+#### 5. Structure Only (80-95% reduction)
+
+```
+JSON with large values → Keys + types → {user: {...}, ...}
+```
+
+**Used by**: json_cmd (schema extraction)
+
+#### 6. Code Filtering (20-90% reduction)
+
+```
+Source code → Filter by level:
+  • none       → Keep all               (0%)
+  • minimal    → Strip comments         (20-40%)
+  • aggressive → Strip bodies           (60-90%)
+```
+
+**Used by**: read, smart (language-aware stripping via filter.rs)
+
+<CodeGroup>
+```rust None - Keep everything
+fn calculate_total(items: &[Item]) -> i32 {
+    // Sum all items
+    items.iter().map(|i| i.value).sum()
+}
+```
+
+```rust Minimal - Strip comments (20-40%)
+fn calculate_total(items: &[Item]) -> i32 {
+    items.iter().map(|i| i.value).sum()
+}
+```
+
+```rust Aggressive - Strip bodies (60-90%)
+fn calculate_total(items: &[Item]) -> i32 { ... }
+```
+</CodeGroup>
+
+#### 7. Failure Focus (94-99% reduction)
+
+```
+100 tests mixed → Failures only → "2 failed:"
+                                   "  • test_auth"
+```
+
+**Used by**: vitest, playwright, runner (test mode)
+
+#### 8-12. Additional Strategies
+
+- **Tree Compression** (ls): Flat list → hierarchy (50-70%)
+- **Progress Filtering** (wget, pnpm): Strip ANSI bars (85-95%)
+- **JSON/Text Dual Mode** (ruff, pip): JSON when available (80%+)
+- **State Machine Parsing** (pytest): Track test state (90%+)
+- **NDJSON Streaming** (go test): Line-by-line JSON (90%+)
+
+<Note>
+  See ARCHITECTURE.md lines 308-413 for detailed filtering strategy descriptions with visual diagrams.
+</Note>
+
+## Core Design Patterns
+
+### 1. Package Manager Detection (JS/TS modules)
+
+```rust
+// Detection order: pnpm → yarn → npm
+let is_pnpm = Path::new("pnpm-lock.yaml").exists();
+let is_yarn = Path::new("yarn.lock").exists();
+
+let mut cmd = if is_pnpm {
+    Command::new("pnpm").arg("exec").arg("--").arg("eslint")
+} else if is_yarn {
+    Command::new("yarn").arg("exec").arg("--").arg("eslint")
+} else {
+    Command::new("npx").arg("--no-install").arg("--").arg("eslint")
+};
+```
+
+**Why this matters**:
+- Preserves CWD correctly
+- Works in monorepo structures
+- Uses project-local dependencies
+- Consistent CI/CD behavior
+
+### 2. Lazy Static Regex
+
+```rust
+lazy_static::lazy_static! {
+    static ref PATTERN: Regex = Regex::new(r"ERROR:.*").unwrap();
+}
+
+// Compiled once at first use, reused forever
+let matches: Vec<_> = PATTERN.find_iter(text).collect();
+```
+
+**Performance**: Avoids regex recompilation overhead (~5-10ms per call)
+
+### 3. Exit Code Preservation
+
+```rust
+if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    eprintln!("{}", stderr);
+    std::process::exit(output.status.code().unwrap_or(1));
+}
+```
+
+**Critical for**: CI/CD pipelines, pre-commit hooks, git workflows
+
+## Token Tracking System
+
+RTK tracks token savings in a SQLite database:
+
+```
+~/.local/share/rtk/history.db
+
+┌─────────────────────────────────────────┐
+│ commands                                │
+├─────────────────────────────────────────┤
+│ id              INTEGER PRIMARY KEY     │
+│ timestamp       TEXT NOT NULL           │
+│ original_cmd    TEXT NOT NULL           │
+│ rtk_cmd         TEXT NOT NULL           │
+│ input_tokens    INTEGER NOT NULL        │
+│ output_tokens   INTEGER NOT NULL        │
+│ saved_tokens    INTEGER NOT NULL        │
+│ savings_pct     REAL NOT NULL           │
+│ exec_time_ms    INTEGER DEFAULT 0       │
+└─────────────────────────────────────────┘
+```
+
+### Token Estimation
+
+```rust
+// Heuristic: ~4 characters per token (GPT-style)
+fn estimate_tokens(text: &str) -> usize {
+    (text.len() as f64 / 4.0).ceil() as usize
+}
+
+input_tokens  = estimate_tokens(raw_output);
+output_tokens = estimate_tokens(filtered_output);
+saved_tokens  = input_tokens - output_tokens;
+savings_pct   = (saved / input) × 100.0;
+```
+
+### Automatic Cleanup
+
+```rust
+// Runs on each INSERT
+DELETE FROM commands
+WHERE timestamp < datetime('now', '-90 days')
+```
+
+**Retention**: 90 days (configurable via `HISTORY_DAYS` constant)
+
+## Configuration System
+
+### Two-Tier Configuration
+
+1. **User Settings** (`~/.config/rtk/config.toml`)
+   ```toml
+   [general]
+   default_filter_level = "minimal"
+   enable_tracking = true
+   retention_days = 90
+
+   [tracking]
+   database_path = "~/.local/share/rtk/history.db"
+   ```
+
+2. **LLM Integration** (`CLAUDE.md`)
+   - Global: `~/.config/rtk/CLAUDE.md`
+   - Local: `./CLAUDE.md` (project-specific)
+   - Created by: `rtk init [--global]`
+
+<Warning>
+  Configuration is loaded on-demand to maintain &lt;10ms startup time. No file I/O during command execution.
+</Warning>
+
+## Performance Characteristics
+
+### Targets
+
+| Metric | Target | Why |
+|--------|--------|-----|
+| **Startup time** | &lt;10ms | Users expect instant CLI tools |
+| **Memory overhead** | &lt;5MB | Minimal resource impact |
+| **Token savings** | 60-90% | LLM cost reduction |
+| **Binary size** | &lt;5MB | Fast downloads/updates |
+
+### Optimizations
+
+- **Zero async overhead**: Single-threaded, no tokio
+- **Lazy regex compilation**: Compile once, reuse forever
+- **Minimal allocations**: Borrow over clone
+- **No startup I/O**: Config loaded on-demand
+- **LTO + strip**: Link-time optimization + symbol stripping
+
+## Error Handling
+
+RTK uses `anyhow::Result<()>` for error propagation:
+
+```rust
+use anyhow::{Context, Result};
+
+pub fn run(args: &[String], verbose: u8) -> Result<()> {
+    let output = execute_command(args)
+        .context("Failed to execute command")?;
+    
+    let filtered = filter_output(&output)
+        .context("Failed to filter output")?;
+    
+    Ok(())
+}
+```
+
+**Rules**:
+- Always use `.context("description")` with `?`
+- Never use `.unwrap()` in production code
+- Graceful degradation: If filter fails, fallback to raw command
+- Preserve exit codes for CI/CD reliability
+
+## Next Steps
+
+- [Building RTK](/contributing/building) - Build from source
+- [Testing Guide](/contributing/testing) - Testing strategy and TDD workflow
+- [Adding Commands](/contributing/adding-commands) - Implement new filters

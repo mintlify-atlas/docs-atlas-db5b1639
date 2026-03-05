@@ -1,0 +1,327 @@
+---
+title: "Proxy Mode"
+description: "Execute commands without filtering while tracking metrics"
+---
+
+## What is Proxy Mode?
+
+Proxy mode executes commands **without RTK filtering** while still recording usage metrics in the tracking database. It provides a safety valve when RTK's filtering causes issues or you need the full, unfiltered output.
+
+<Note>
+Proxy mode runs the raw command and passes through output unchanged. Token savings are 0%, but execution metrics (command count, timing) are still tracked.
+</Note>
+
+## Usage
+
+```bash
+rtk proxy <command> [args...]
+```
+
+Examples:
+
+```bash
+# Full git log output (no RTK truncation)
+rtk proxy git log --oneline -20
+
+# Raw npm install output (no filtering)
+rtk proxy npm install express
+
+# Any command works
+rtk proxy curl https://api.example.com/data
+rtk proxy docker logs my-container
+rtk proxy pytest tests/
+```
+
+## Benefits
+
+### 1. Bypass RTK Filtering Bugs
+
+If RTK's filter produces incorrect output:
+
+```bash
+# RTK filter may have a bug
+rtk git log --graph --all
+# Output looks wrong?
+
+# Use proxy mode to get raw git output
+rtk proxy git log --graph --all
+# Identical to raw `git log --graph --all`
+```
+
+### 2. Track Metrics Without Filtering
+
+Record which commands you use without modifying output:
+
+```bash
+# Track usage but preserve full output
+rtk proxy cargo build
+rtk proxy go test ./...
+
+# Later: see what commands were run
+rtk gain --history
+# Shows "rtk proxy cargo build" with 0% savings
+```
+
+### 3. Guaranteed Compatibility
+
+Proxy mode works with **any** command, even if RTK doesn't implement a filter for it:
+
+```bash
+# RTK doesn't have a terraform filter
+rtk proxy terraform plan
+
+# RTK doesn't handle kubectl rollout
+rtk proxy kubectl rollout status deployment/my-app
+```
+
+### 4. Debugging & Comparison
+
+Compare RTK-filtered vs raw output:
+
+```bash
+# RTK filtered
+rtk cargo test > filtered.txt
+
+# Raw output
+rtk proxy cargo test > raw.txt
+
+# Compare
+diff filtered.txt raw.txt
+```
+
+## Tracking Behavior
+
+Proxy mode tracks commands with **0% savings**:
+
+```bash
+rtk proxy git status
+# Tracked as:
+# - original_cmd: "git status"
+# - rtk_cmd: "rtk proxy git status"
+# - input_tokens: 1000 (raw output)
+# - output_tokens: 1000 (same — no filtering)
+# - saved_tokens: 0
+# - savings_pct: 0.0%
+```
+
+View proxy usage in analytics:
+
+```bash
+rtk gain --history
+# Output:
+# Recent Commands:
+# 2026-03-05 10:15 | rtk proxy git log      | 0 saved (0.0%)
+# 2026-03-05 10:14 | rtk git status         | 800 saved (80.0%)
+```
+
+<Warning>
+Proxy commands appear in `rtk gain` output with 0% savings, which dilutes overall averages. Use sparingly for production workflows.
+</Warning>
+
+## When to Use Proxy Mode
+
+### Use Proxy Mode When:
+
+✅ **RTK filter produces incorrect output**
+```bash
+rtk git diff  # Shows truncated diff?
+rtk proxy git diff  # Get full diff
+```
+
+✅ **You need full debugging information**
+```bash
+rtk cargo test  # Shows failures only
+rtk proxy cargo test  # Shows all test output (passed + failed)
+```
+
+✅ **RTK doesn't support the command**
+```bash
+rtk proxy terraform apply
+rtk proxy ansible-playbook site.yml
+```
+
+✅ **You want to track usage without filtering**
+```bash
+# Track which kubectl commands you use most
+rtk proxy kubectl get pods
+rtk proxy kubectl logs my-pod
+rtk gain --history  # See usage patterns
+```
+
+### Don't Use Proxy Mode When:
+
+❌ **You want token savings** — Use regular RTK commands instead
+```bash
+rtk git status  # ✅ Saves 80% tokens
+rtk proxy git status  # ❌ 0% savings
+```
+
+❌ **RTK filter works correctly** — Proxy wastes LLM context
+```bash
+rtk cargo test  # ✅ Failures-only output (90% reduction)
+rtk proxy cargo test  # ❌ Full verbose output (no benefit)
+```
+
+## Examples
+
+### Example 1: Debug RTK Filter
+
+```bash
+# RTK filter seems broken
+rtk git log --graph --all --decorate
+# Output looks wrong
+
+# Use proxy to get raw git output
+rtk proxy git log --graph --all --decorate
+# Identical to raw git — confirms RTK filter has a bug
+
+# Report issue: github.com/rtk-ai/rtk/issues
+```
+
+### Example 2: Full Test Output for Debugging
+
+```bash
+# Normal: failures only (90% reduction)
+rtk cargo test
+# FAILED: 2/15 tests
+#   ✗ test_edge_case: assertion failed at src/lib.rs:42
+
+# Proxy: full output including passed tests
+rtk proxy cargo test
+# running 15 tests
+# test utils::test_parse ... ok
+# test utils::test_format ... ok
+# ...
+# test failures::test_edge_case ... FAILED
+# ...
+```
+
+### Example 3: Unsupported Command
+
+```bash
+# RTK doesn't have a helm filter
+rtk helm list
+# Error: command not found
+
+# Use proxy mode
+rtk proxy helm list
+# Works! (passes through to raw helm)
+```
+
+### Example 4: Track Usage Without Filtering
+
+```bash
+# Track which commands you use during a session
+rtk proxy git checkout main
+rtk proxy git pull
+rtk proxy npm run dev
+
+# Later: analyze usage patterns
+rtk gain --history
+# Recent Commands:
+# 2026-03-05 14:30 | rtk proxy npm run dev    | 0 saved (0.0%)
+# 2026-03-05 14:25 | rtk proxy git pull       | 0 saved (0.0%)
+# 2026-03-05 14:20 | rtk proxy git checkout   | 0 saved (0.0%)
+```
+
+### Example 5: Compare Filtered vs Raw
+
+```bash
+# Save both outputs
+rtk cargo build 2>&1 | tee filtered.txt
+rtk proxy cargo build 2>&1 | tee raw.txt
+
+# Compare differences
+diff -u filtered.txt raw.txt
+# Shows what RTK filter removed/modified
+```
+
+## Comparison with Regular RTK Commands
+
+| Aspect | Regular RTK | Proxy Mode |
+|--------|-------------|------------|
+| **Filtering** | ✅ Smart filtering (60-90% reduction) | ❌ No filtering (raw output) |
+| **Token Savings** | ✅ 60-90% | ❌ 0% |
+| **Tracking** | ✅ Recorded with savings | ✅ Recorded with 0% savings |
+| **Compatibility** | ⚠️ Only supported commands | ✅ Any command |
+| **Use Case** | Production workflows | Debugging, unsupported commands |
+| **Exit Codes** | ✅ Preserved | ✅ Preserved |
+| **Output** | Compressed | Unchanged |
+
+## Implementation Details
+
+<Accordion title="How Proxy Mode Works Internally">
+From RTK's architecture:
+
+1. **Command parsing**: `rtk proxy <command>` is parsed by Clap
+2. **Execution**: RTK executes `<command>` directly via `std::process::Command`
+3. **Output passthrough**: stdout/stderr are passed unchanged to the terminal
+4. **Tracking**: Input and output tokens are the same (estimated from raw output)
+5. **Exit code**: Preserved from the underlying command
+
+Proxy mode is essentially:
+```rust
+let output = Command::new(command).args(args).output()?;
+stdout().write_all(&output.stdout)?;
+stderr().write_all(&output.stderr)?;
+std::process::exit(output.status.code().unwrap_or(1));
+```
+
+Tracking records:
+- `original_cmd` = `<command> <args>`
+- `rtk_cmd` = `rtk proxy <command> <args>`
+- `input_tokens` = `output_tokens` (no filtering)
+- `saved_tokens` = 0
+- `savings_pct` = 0.0
+</Accordion>
+
+## Troubleshooting
+
+### Proxy Mode Not Tracking
+
+**Symptom**: `rtk proxy <command>` runs but doesn't appear in `rtk gain --history`.
+
+**Solution**: Check database path and permissions.
+
+```bash
+# Verify database location
+echo $RTK_DB_PATH
+
+# Check permissions
+ls -la ~/.local/share/rtk/history.db
+
+# Run with debug output
+rtk proxy git status 2>&1 | grep -i track
+```
+
+### Exit Code Not Preserved
+
+**Symptom**: `rtk proxy <command>` always exits with 0, even on failure.
+
+**Solution**: This is a bug. Report at github.com/rtk-ai/rtk/issues.
+
+Workaround:
+```bash
+# Use raw command directly
+git status
+```
+
+### Command Not Found
+
+**Symptom**: `rtk proxy terraform plan` → "terraform: command not found"
+
+**Solution**: Proxy mode requires the underlying command to be in PATH.
+
+```bash
+# Check command exists
+which terraform
+
+# If missing, install it
+# Then retry proxy mode
+rtk proxy terraform plan
+```
+
+## See Also
+
+- [Tee Recovery](/advanced/tee-recovery) — Full output recovery on command failures
+- [Custom Database Path](/advanced/custom-database) — Configure tracking database location

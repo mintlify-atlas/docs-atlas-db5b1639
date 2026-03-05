@@ -1,0 +1,468 @@
+---
+title: "Go Development Tools"
+description: "Token-optimized Go testing, building, and linting with NDJSON streaming"
+---
+
+## Overview
+
+RTK provides comprehensive Go development tool support with **80-90% token savings** through:
+
+- **NDJSON streaming**: Line-by-line parsing of `go test -json`
+- **Error-only filtering**: Show only build/vet errors
+- **JSON grouping**: Structured golangci-lint output
+- **Package tracking**: Handle multiple packages in parallel
+
+## Supported Tools
+
+<CardGroup cols={2}>
+  <Card title="go test" icon="flask">
+    Test runner with NDJSON parsing (90% savings)
+  </Card>
+  <Card title="go build" icon="hammer">
+    Build errors only (80% savings)
+  </Card>
+  <Card title="go vet" icon="check">
+    Static analysis issues (75% savings)
+  </Card>
+  <Card title="golangci-lint" icon="shield">
+    Comprehensive linting (85% savings)
+  </Card>
+</CardGroup>
+
+## rtk go test
+
+Go test runner with NDJSON streaming parser.
+
+### Usage
+
+```bash
+rtk go test [packages] [flags]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard go test
+$ go test ./...
+=== RUN   TestParseConfig
+--- PASS: TestParseConfig (0.00s)
+=== RUN   TestFilterData
+--- PASS: TestFilterData (0.01s)
+=== RUN   TestFetchUser
+    api_test.go:42: Expected status 200, got 404
+--- FAIL: TestFetchUser (0.02s)
+=== RUN   TestValidateInput
+--- PASS: TestValidateInput (0.00s)
+=== RUN   TestProcessRequest
+--- PASS: TestProcessRequest (0.01s)
+FAIL
+FAIL    github.com/user/project/pkg/api    0.023s
+?       github.com/user/project/pkg/utils  [no test files]
+ok      github.com/user/project/pkg/models 0.008s
+# 18+ lines, ~600 tokens
+```
+
+```bash RTK go test
+$ rtk go test ./...
+✗ 1 failed, 4 passed (0.02s)
+
+github.com/user/project/pkg/api
+  TestFetchUser
+    api_test.go:42: Expected status 200, got 404
+
+[full output: ~/.local/share/rtk/tee/1707753600_go_test.log]
+# 7 lines, ~60 tokens (90% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **NDJSON parsing**: Parses `go test -json` output line-by-line
+- **Streaming**: Handles interleaved events from multiple packages
+- **Failure details**: Preserves test output and error messages
+- **Build errors**: Captures compilation failures separately
+- **Tee recovery**: Full output saved to file on failure
+
+### Implementation
+
+From `src/go_cmd.rs:run_test()`:
+
+```rust
+// Force JSON output
+cmd.arg("test");
+if !args.iter().any(|a| a == "-json") {
+    cmd.arg("-json");
+}
+
+// Parse NDJSON line-by-line
+#[derive(Deserialize)]
+struct GoTestEvent {
+    #[serde(rename = "Time")]
+    time: Option<String>,
+    #[serde(rename = "Action")]
+    action: String,  // "run", "pass", "fail", "output"
+    #[serde(rename = "Package")]
+    package: Option<String>,
+    #[serde(rename = "Test")]
+    test: Option<String>,
+    #[serde(rename = "Output")]
+    output: Option<String>,
+}
+
+// Track per-package results
+let mut packages: HashMap<String, PackageResult> = HashMap::new();
+
+for line in stdout.lines() {
+    let event: GoTestEvent = serde_json::from_str(line)?;
+    match event.action.as_str() {
+        "fail" => {
+            packages.entry(event.package)
+                .or_default()
+                .failed_tests.push((event.test, event.output));
+        }
+        "pass" => {
+            packages.entry(event.package)
+                .or_default()
+                .pass += 1;
+        }
+        _ => {}
+    }
+}
+```
+
+### NDJSON Event Stream
+
+Go test outputs NDJSON (newline-delimited JSON) for structured parsing:
+
+```json
+{"Time":"2024-01-23T10:00:00Z","Action":"run","Package":"github.com/user/project/pkg/api","Test":"TestFetchUser"}
+{"Time":"2024-01-23T10:00:00Z","Action":"output","Package":"github.com/user/project/pkg/api","Test":"TestFetchUser","Output":"    api_test.go:42: Expected status 200, got 404\n"}
+{"Time":"2024-01-23T10:00:00Z","Action":"fail","Package":"github.com/user/project/pkg/api","Test":"TestFetchUser","Elapsed":0.02}
+```
+
+RTK parses each line independently, allowing streaming output.
+
+### Supported Flags
+
+- `-v`: Verbose (passthrough)
+- `-run <regexp>`: Run tests matching pattern
+- `-short`: Run short tests only
+- `-timeout <duration>`: Test timeout
+- `-race`: Enable race detector
+- `-cover`: Enable coverage
+
+### Example: Specific Package
+
+```bash
+rtk go test github.com/user/project/pkg/api
+# Tests only the api package
+```
+
+### Example: With Flags
+
+```bash
+rtk go test -v -race -timeout 30s ./...
+# Verbose, race detection, 30s timeout
+```
+
+## rtk go build
+
+Go build showing errors only.
+
+### Usage
+
+```bash
+rtk go build [flags] [packages]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard go build
+$ go build .
+# pkg/api/handler.go:42:5: undefined: processRequest
+# pkg/utils/helpers.go:18:10: cannot use "string" (type string) as type int in argument to format
+# 2+ lines, ~150 tokens
+```
+
+```bash RTK go build (success)
+$ rtk go build .
+✓ Build successful
+# 1 line, ~10 tokens
+```
+
+```bash RTK go build (errors)
+$ rtk go build .
+✗ Build failed (2 errors)
+
+pkg/api/handler.go:42:5
+  undefined: processRequest
+
+pkg/utils/helpers.go:18:10
+  cannot use "string" as type int
+
+[full output: ~/.local/share/rtk/tee/1707753600_go_build.log]
+# 9 lines, ~30 tokens (80% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **Error-only**: Show compilation errors, hide success messages
+- **File locations**: Preserve file:line:column references
+- **Tee recovery**: Full output saved on failure
+- **Exit codes**: Preserves build failure codes
+
+### Implementation
+
+From `src/go_cmd.rs:run_build()`:
+
+```rust
+fn filter_go_build(output: &str) -> String {
+    let lines: Vec<&str> = output.lines()
+        .filter(|line| {
+            // Keep error lines (file:line:col format)
+            line.contains(".go:") && (line.contains("error") || line.contains(":"))
+        })
+        .collect();
+    
+    if lines.is_empty() {
+        return "✓ Build successful".to_string();
+    }
+    
+    format!("✗ Build failed ({} errors)\n\n{}", lines.len(), lines.join("\n"))
+}
+```
+
+## rtk go vet
+
+Go vet static analysis showing issues only.
+
+### Usage
+
+```bash
+rtk go vet [packages]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard go vet
+$ go vet ./...
+# pkg/api/handler.go:42:5: missing return at end of function
+# pkg/utils/helpers.go:18:10: Printf format %d has arg of wrong type string
+# exit status 1
+# 3+ lines, ~120 tokens
+```
+
+```bash RTK go vet
+$ rtk go vet ./...
+✗ 2 issues found
+
+pkg/api/handler.go:42:5
+  missing return at end of function
+
+pkg/utils/helpers.go:18:10
+  Printf format %d has arg of wrong type string
+# 7 lines, ~30 tokens (75% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **Issue-only**: Show vet warnings/errors, hide success
+- **File locations**: Preserve file:line:column
+- **Exit codes**: Fails if issues found
+
+## rtk golangci-lint
+
+Golangci-lint with JSON parsing and rule grouping.
+
+### Usage
+
+```bash
+rtk golangci-lint run [options]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard golangci-lint
+$ golangci-lint run
+pkg/api/handler.go:42:5: Error return value of `processRequest` is not checked (errcheck)
+pkg/api/handler.go:55:10: func `handleRequest` is unused (unused)
+pkg/utils/helpers.go:18:1: exported function `Format` should have comment or be unexported (golint)
+pkg/utils/helpers.go:24:5: unnecessary assignment to the blank identifier (ineffassign)
+pkg/models/user.go:12:2: struct field `ID` has json tag but is not exported (govet)
+# 5+ lines, ~300 tokens
+```
+
+```bash RTK golangci-lint
+$ rtk golangci-lint run
+✗ 5 issues in 3 files
+
+By linter:
+  errcheck: 1 issue
+    pkg/api/handler.go:42 Error return value not checked
+
+  unused: 1 issue
+    pkg/api/handler.go:55 func `handleRequest` is unused
+
+  golint: 1 issue
+    pkg/utils/helpers.go:18 exported function should have comment
+
+  ineffassign: 1 issue
+    pkg/utils/helpers.go:24 unnecessary blank identifier assignment
+
+  govet: 1 issue
+    pkg/models/user.go:12 unexported field has json tag
+# 19 lines, ~45 tokens (85% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **JSON parsing**: Uses `--out-format=json` automatically
+- **Linter grouping**: Groups issues by linter name
+- **File locations**: Compact file:line format
+- **Exit codes**: Safe for CI/CD
+
+### Implementation
+
+From `src/golangci_cmd.rs`:
+
+```rust
+// Force JSON output
+cmd.arg("run").arg("--out-format=json");
+
+// Parse JSON output
+#[derive(Deserialize)]
+struct GolangciIssue {
+    #[serde(rename = "FromLinter")]
+    from_linter: String,
+    #[serde(rename = "Text")]
+    text: String,
+    #[serde(rename = "Pos")]
+    pos: Position,
+}
+
+#[derive(Deserialize)]
+struct Position {
+    #[serde(rename = "Filename")]
+    filename: String,
+    #[serde(rename = "Line")]
+    line: usize,
+}
+
+let result: GolangciOutput = serde_json::from_str(&stdout)?;
+
+// Group by linter
+let mut by_linter: HashMap<String, Vec<GolangciIssue>> = HashMap::new();
+for issue in result.issues {
+    by_linter.entry(issue.from_linter)
+        .or_default()
+        .push(issue);
+}
+```
+
+### Supported Options
+
+- `--enable-all`: Enable all linters
+- `--disable <linter>`: Disable specific linter
+- `--fix`: Auto-fix issues
+- `--config <file>`: Use custom config
+
+## Package Handling
+
+All Go commands support multiple packages:
+
+```bash
+rtk go test ./...                    # All packages recursively
+rtk go test ./pkg/api ./pkg/utils    # Specific packages
+rtk go test github.com/user/project/pkg/api  # Full import path
+```
+
+## Build Tags
+
+Go commands respect build tags:
+
+```bash
+rtk go test -tags=integration ./...
+rtk go build -tags=release .
+```
+
+## CI/CD Integration
+
+All Go commands preserve exit codes:
+
+```yaml
+# .github/workflows/ci.yml
+name: Go CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      - name: Vet
+        run: rtk go vet ./...
+      - name: Lint
+        run: rtk golangci-lint run
+      - name: Test
+        run: rtk go test -race -cover ./...
+      - name: Build
+        run: rtk go build .
+```
+
+## Token Savings Summary
+
+| Command | Standard Tokens | RTK Tokens | Savings |
+|---------|----------------|------------|----------|
+| `go test` (1 fail, 4 pass) | 600 | 60 | **-90%** |
+| `go build` (2 errors) | 150 | 30 | **-80%** |
+| `go vet` (2 issues) | 120 | 30 | **-75%** |
+| `golangci-lint` (5 issues) | 300 | 45 | **-85%** |
+
+## Performance Notes
+
+### NDJSON Streaming
+
+RTK parses `go test -json` output line-by-line, enabling:
+
+- **Memory efficiency**: No buffering entire output
+- **Real-time processing**: Incremental parsing as tests run
+- **Scalability**: Handles large test suites with many packages
+
+### Package Parallelization
+
+`go test` runs packages in parallel. RTK tracks results per package:
+
+```rust
+let mut packages: HashMap<String, PackageResult> = HashMap::new();
+
+// Events arrive interleaved:
+// {"Package":"pkg/api","Action":"run"}
+// {"Package":"pkg/utils","Action":"run"}
+// {"Package":"pkg/api","Action":"fail"}
+// {"Package":"pkg/utils","Action":"pass"}
+
+// RTK groups by package:
+packages["pkg/api"] = { failed: 1 }
+packages["pkg/utils"] = { passed: 5 }
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="flask" href="/commands/testing">
+    Cross-language test runners
+  </Card>
+  <Card title="GitHub" icon="github" href="/commands/github">
+    GitHub PR/issue management
+  </Card>
+</CardGroup>

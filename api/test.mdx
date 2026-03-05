@@ -1,0 +1,187 @@
+---
+title: 'rtk test'
+description: 'Run tests and show only failures'
+---
+
+## Overview
+
+Executes test commands and filters output to show only failures and summary. Supports all major test frameworks with intelligent parsing.
+
+## Syntax
+
+```bash
+rtk test <COMMAND...>
+```
+
+## Arguments
+
+<ParamField path="COMMAND" type="string[]" required>
+  Full test command to execute (e.g., `cargo test`, `pytest`, `npm test`)
+</ParamField>
+
+## Supported Test Frameworks
+
+### Rust - Cargo Test
+```bash
+rtk test cargo test
+rtk test cargo test --lib
+rtk test cargo nextest run
+```
+
+**Detects:**
+- Test result summary
+- Failed test names
+- Failure details
+
+### Python - Pytest
+```bash
+rtk test pytest
+rtk test pytest -v tests/
+```
+
+**Detects:**
+- Passed/failed/error counts
+- Failed test names
+- Assertion failures
+
+### JavaScript - Jest/Vitest
+```bash
+rtk test npm test
+rtk test yarn test
+rtk test pnpm test
+```
+
+**Detects:**
+- Test Suites summary
+- Tests summary
+- Failed test names (marked with `✕`)
+
+### Go - Go Test
+```bash
+rtk test go test ./...
+rtk test go test -v
+```
+
+**Detects:**
+- PASS/FAIL lines
+- Failed test output
+- Coverage summary
+
+## Output Format
+
+### With Failures
+```
+❌ FAILURES:
+  FAILED tests::test_addition - assertion failed
+  FAILED tests::test_division - panicked at 'divide by zero'
+  ... +3 more failures
+
+📊 SUMMARY:
+  test result: FAILED. 2 passed; 5 failed; 0 ignored
+```
+
+### All Passing
+```
+📊 SUMMARY:
+  test result: ok. 10 passed; 0 failed; 0 ignored
+```
+
+### With Errors
+```
+❌ FAILURES:
+  ERROR tests::setup - connection refused
+  FAILED tests::test_api - timeout
+
+📊 OUTPUT (last 5 lines):
+  Running 12 tests
+  ERROR: connection refused
+  test result: FAILED
+```
+
+## Token Savings
+
+**90% reduction** - only failures and summary shown
+
+<CodeGroup>
+```bash Example: Rust tests
+rtk test cargo test
+# Shows only failed tests + summary
+```
+
+```bash Example: Python tests
+rtk test pytest -v
+# Pytest failures only
+```
+
+```bash Example: JavaScript tests
+rtk test npm test
+# Jest/Vitest failures only
+```
+
+```bash Example: Specific test
+rtk test cargo test integration_tests
+# Run specific test, show failures
+```
+
+```bash Example: With coverage
+rtk test pytest --cov
+# Show failures + coverage summary
+```
+</CodeGroup>
+
+## Behavior Details
+
+### Failure Detection
+
+RTK detects failures via multiple patterns:
+- Lines containing `FAILED`, `ERROR`, `FAIL`
+- Lines containing `✕`, `✗`, `❌`
+- Assertion failures and panic messages
+- Test framework-specific markers
+
+### Summary Extraction
+
+Extracts key summary lines:
+- `test result:` (Rust)
+- `Tests:`, `Test Suites:` (Jest/Vitest)
+- `passed`, `failed`, `error` counts (Pytest)
+- `ok`, `FAIL` lines (Go)
+
+### Fallback Behavior
+
+If no framework-specific patterns match:
+- Shows last 5 lines of output
+- Preserves exit code
+- Still provides token reduction
+
+## Tee Output Recovery
+
+On failure (exit code ≠ 0), RTK automatically saves full output and prints a hint:
+
+```
+❌ FAILURES:
+  ...
+
+[full output: ~/.local/share/rtk/tee/test-abc123.txt]
+```
+
+Read the full output without re-running:
+```bash
+rtk read ~/.local/share/rtk/tee/test-abc123.txt
+```
+
+## Exit Codes
+
+Preserves the original test command exit code:
+- `0` - All tests passed
+- `1` - Some tests failed
+- `101` - Compilation error (Rust)
+- Other codes preserved as-is
+
+## Related Commands
+
+- `rtk cargo test` - Rust-specific test filter (90% savings)
+- `rtk vitest run` - Vitest-specific filter (99.5% savings)
+- `rtk playwright test` - Playwright-specific filter (94% savings)
+- `rtk pytest` - Pytest-specific filter (90% savings)
+- `rtk err` - Show only errors from any command

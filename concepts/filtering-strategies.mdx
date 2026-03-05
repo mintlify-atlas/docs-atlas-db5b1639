@@ -1,0 +1,528 @@
+---
+title: "Filtering Strategies"
+description: "RTK's four core strategies for token reduction"
+---
+
+RTK achieves 60-90% token savings through **four core strategies**: filtering, grouping, truncation, and deduplication. Each command uses one or more strategies tailored to its output format.
+
+## The Four Strategies
+
+<CardGroup cols={2}>
+  <Card title="1. Filtering" icon="filter">
+    Remove noise (comments, whitespace, boilerplate) while preserving structure
+  </Card>
+  
+  <Card title="2. Grouping" icon="layer-group">
+    Aggregate similar items (files by directory, errors by type)
+  </Card>
+  
+  <Card title="3. Truncation" icon="scissors">
+    Keep relevant context, cut redundancy (first/last lines, signatures only)
+  </Card>
+  
+  <Card title="4. Deduplication" icon="clone">
+    Collapse repeated patterns with counts ("[ERROR] ... (×5)")
+  </Card>
+</CardGroup>
+
+## Strategy Matrix
+
+Different commands use different strategies:
+
+| Strategy | Used By | Technique | Reduction |
+|----------|---------|-----------|----------|
+| **Stats Extraction** | git status, git log, pnpm | Count/aggregate, drop details | 90-99% |
+| **Error Only** | runner (err mode) | stderr only, drop stdout | 60-80% |
+| **Grouping by Pattern** | lint, tsc, grep | Group by rule/file/error code | 80-90% |
+| **Deduplication** | log_cmd | Unique + count | 70-85% |
+| **Structure Only** | json_cmd | Keys + types, strip values | 80-95% |
+| **Code Filtering** | read, smart | Filter by level (none/minimal/aggressive) | 0-90% |
+| **Failure Focus** | vitest, playwright, runner | Failures only, hide passing | 94-99% |
+| **Tree Compression** | ls | Hierarchy with counts | 50-70% |
+| **Progress Filtering** | wget, pnpm install | Strip ANSI, final result only | 85-95% |
+| **JSON/Text Dual** | ruff, pip | JSON when available, text fallback | 80%+ |
+| **State Machine** | pytest | Track test state, extract failures | 90%+ |
+| **NDJSON Streaming** | go test | Line-by-line JSON parse | 90%+ |
+
+## Language-Aware Filtering
+
+RTK's `filter.rs` module provides **language-aware code filtering** with three levels:
+
+### Filter Levels
+
+<Accordion title="None (0% reduction)">
+Keep everything—raw file content.
+
+```rust
+// Example: filter.rs with FilterLevel::None
+fn calculate_total(items: &[Item]) -> i32 {
+    // Sum all items
+    items.iter().map(|i| i.value).sum()
+}
+```
+</Accordion>
+
+<Accordion title="Minimal (20-40% reduction)">
+Strip comments and normalize whitespace. Keep structure and code.
+
+```rust
+// Example: filter.rs with FilterLevel::Minimal
+fn calculate_total(items: &[Item]) -> i32 {
+    items.iter().map(|i| i.value).sum()
+}
+```
+</Accordion>
+
+<Accordion title="Aggressive (60-90% reduction)">
+Strip comments **and** function bodies. Keep only signatures.
+
+```rust
+// Example: filter.rs with FilterLevel::Aggressive
+fn calculate_total(items: &[Item]) -> i32 { ... }
+```
+</Accordion>
+
+### Language Support
+
+RTK detects languages by file extension:
+
+| Language | Extensions | Comment Syntax |
+|----------|-----------|----------------|
+| Rust | `.rs` | `//`, `/* */`, `///` |
+| Python | `.py`, `.pyw` | `#`, `"""` |
+| JavaScript | `.js`, `.mjs`, `.cjs` | `//`, `/* */` |
+| TypeScript | `.ts`, `.tsx` | `//`, `/* */` |
+| Go | `.go` | `//`, `/* */` |
+| C/C++ | `.c`, `.cpp`, `.h`, `.hpp` | `//`, `/* */` |
+| Java | `.java` | `//`, `/* */` |
+| Ruby | `.rb` | `#`, `=begin`/`=end` |
+| Shell | `.sh`, `.bash`, `.zsh` | `#` |
+
+### Usage Examples
+
+```bash
+# None: Full file content
+rtk read src/main.rs -l none
+
+# Minimal: Strip comments (default)
+rtk read src/main.rs -l minimal
+
+# Aggressive: Signatures only
+rtk read src/main.rs -l aggressive
+```
+
+<Note>
+  **When to use aggressive?** When LLMs need to understand code structure but not implementation details. Perfect for "what functions exist?" queries.
+</Note>
+
+## Command-Specific Strategies
+
+### Git Operations
+
+<Accordion title="git status (Stats Extraction)">
+**Raw output (50 lines, ~800 tokens):**
+```
+On branch main
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   src/filter.rs
+	modified:   src/git.rs
+	modified:   src/tracking.rs
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	src/discover/
+```
+
+**RTK output (1 line, ~20 tokens):**
+```
+3 modified, 1 untracked ✓
+```
+
+**Strategy:**
+1. Count modified files: 3
+2. Count untracked files: 1
+3. Aggregate: "3 modified, 1 untracked"
+4. **Token savings: 97%**
+</Accordion>
+
+<Accordion title="git diff (Stats + Compact)">
+**Raw output (200+ lines, ~3000 tokens):**
+```diff
+diff --git a/src/filter.rs b/src/filter.rs
+index abc1234..def5678 100644
+--- a/src/filter.rs
++++ b/src/filter.rs
+@@ -150,7 +150,12 @@ impl FilterStrategy for MinimalFilter {
+-    let mut result = String::new();
++    let mut result = String::with_capacity(content.len());
+     for line in content.lines() {
+...
+```
+
+**RTK output (~30 lines, ~500 tokens):**
+```
++142/-89, 3 files changed
+
+src/filter.rs:
+  +12/-7 (capacity optimization)
+src/git.rs:
+  +89/-45 (exit code fix)
+src/tracking.rs:
+  +41/-37 (refactor)
+```
+
+**Strategy:**
+1. Extract stats: +142/-89
+2. Group by file
+3. Show summary per file
+4. **Token savings: 83%**
+</Accordion>
+
+<Accordion title="git log (One-line summaries)">
+**Raw output (50 lines, ~1000 tokens):**
+```
+commit abc1234def5678
+Author: User <user@example.com>
+Date:   Thu Jan 23 10:00:00 2025 -0800
+
+    Add token tracking feature
+    
+    Implements SQLite-based tracking for token savings.
+    Adds gain command for analytics.
+
+commit 789ghijklm012
+...
+```
+
+**RTK output (5 lines, ~100 tokens):**
+```
+5 commits, +142/-89
+
+abc1234 Add token tracking feature
+789ghij Fix git argument parsing
+345mnop Add pnpm support
+```
+
+**Strategy:**
+1. Count commits: 5
+2. Extract total stats: +142/-89
+3. Show first line of each commit message
+4. **Token savings: 90%**
+</Accordion>
+
+### Testing
+
+<Accordion title="vitest/playwright (Failure Focus)">
+**Raw output (200+ lines, ~4000 tokens):**
+```
+✓ test/auth.test.ts (5)
+  ✓ should login with valid credentials
+  ✓ should reject invalid password
+  ✓ should lock account after 3 failures
+  ✓ should reset password
+  ✓ should expire sessions
+
+✓ test/api.test.ts (12)
+  ✓ GET /users returns list
+  ✓ POST /users creates user
+  ...
+
+✗ test/db.test.ts (2)
+  ✗ should handle transaction rollback
+    AssertionError: expected 0 to equal 1
+  ✗ should validate constraints
+    DatabaseError: NOT NULL constraint failed
+```
+
+**RTK output (~10 lines, ~200 tokens):**
+```
+FAILED: 2/19 tests
+
+✗ test/db.test.ts:
+  - should handle transaction rollback
+    AssertionError: expected 0 to equal 1
+  - should validate constraints
+    DatabaseError: NOT NULL constraint failed
+```
+
+**Strategy:**
+1. Hide passing tests (17 passed → omitted)
+2. Show only failures (2 failed)
+3. Include error messages for debugging
+4. **Token savings: 95%**
+</Accordion>
+
+<Accordion title="cargo test / go test (Failure Focus + NDJSON)">
+**Raw output (100+ lines, ~2000 tokens):**
+```
+running 15 tests
+test utils::test_parse ... ok
+test utils::test_format ... ok
+test core::test_init ... ok
+test core::test_process ... FAILED
+test filters::test_minimal ... ok
+...
+
+---- core::test_process stdout ----
+thread 'core::test_process' panicked at 'assertion failed'
+```
+
+**RTK output (~5 lines, ~100 tokens):**
+```
+FAILED: 1/15 tests
+
+✗ core::test_process
+  assertion failed at src/core.rs:42
+```
+
+**Strategy (Rust):**
+1. Hide passing tests (14 passed → omitted)
+2. Extract failure details (panic message, file:line)
+3. **Token savings: 95%**
+
+**Strategy (Go - NDJSON):**
+```json
+{"Action":"run","Package":"pkg1","Test":"TestAuth"}
+{"Action":"fail","Package":"pkg1","Test":"TestAuth"}
+{"Action":"pass","Package":"pkg2","Test":"TestDB"}
+```
+1. Parse line-by-line JSON events
+2. Track test state per package
+3. Aggregate failures only
+4. **Token savings: 90%**
+</Accordion>
+
+### Linting
+
+<Accordion title="ESLint/TSC/Ruff (Grouping by Rule)">
+**Raw output (150 lines, ~2500 tokens):**
+```
+/src/auth.ts
+  12:5  error  'user' is assigned a value but never used  no-unused-vars
+  15:8  error  Missing semicolon  semi
+  23:1  error  'password' is assigned a value but never used  no-unused-vars
+
+/src/db.ts
+  8:3   error  'conn' is assigned a value but never used  no-unused-vars
+  14:9  error  Missing semicolon  semi
+  ...
+```
+
+**RTK output (~15 lines, ~300 tokens):**
+```
+Errors by rule:
+  no-unused-vars: 23 violations
+  semi: 45 violations
+  indent: 12 violations
+
+Errors by file:
+  src/auth.ts: 8 errors
+  src/db.ts: 15 errors
+  src/api.ts: 5 errors
+```
+
+**Strategy:**
+1. Parse error lines (regex: `file:line:col  rule`)
+2. Group by rule (no-unused-vars: 23, semi: 45, ...)
+3. Group by file (auth.ts: 8, db.ts: 15, ...)
+4. **Token savings: 88%**
+</Accordion>
+
+### Logs & Data
+
+<Accordion title="Logs (Deduplication)">
+**Raw output (1000+ lines, ~20000 tokens):**
+```
+[INFO] Starting server on port 3000
+[ERROR] Database connection failed: timeout
+[ERROR] Database connection failed: timeout
+[ERROR] Database connection failed: timeout
+[ERROR] Database connection failed: timeout
+[ERROR] Database connection failed: timeout
+[INFO] Retrying connection...
+[ERROR] Database connection failed: timeout
+...
+```
+
+**RTK output (~5 lines, ~100 tokens):**
+```
+[INFO] Starting server on port 3000
+[ERROR] Database connection failed: timeout (×127)
+[INFO] Retrying connection... (×12)
+[ERROR] Database connection failed: timeout (×58)
+```
+
+**Strategy:**
+1. Identify repeated lines (exact match)
+2. Collapse with counts: "(×127)"
+3. Keep first occurrence + count
+4. **Token savings: 99%**
+</Accordion>
+
+<Accordion title="JSON (Structure Extraction)">
+**Raw output (500 lines, ~10000 tokens):**
+```json
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "Alice",
+      "email": "alice@example.com",
+      "profile": {
+        "bio": "Lorem ipsum dolor sit amet...",
+        "avatar": "data:image/png;base64,iVBORw0KGgoAAAANS...",
+        "preferences": { ... }
+      }
+    },
+    // ... 99 more users
+  ],
+  "metadata": { ... }
+}
+```
+
+**RTK output (~10 lines, ~200 tokens):**
+```json
+{
+  "users": [ { /* 100 items */ } ],
+  "metadata": { /* object */ }
+}
+
+Schema:
+  users: array of objects
+    - id: number
+    - name: string
+    - email: string
+    - profile: object
+```
+
+**Strategy:**
+1. Parse JSON structure
+2. Extract keys + types
+3. Count array lengths
+4. Strip values (especially large strings/base64)
+5. **Token savings: 98%**
+</Accordion>
+
+## Advanced Patterns
+
+### State Machine Parsing (pytest)
+
+Pytest output doesn't have JSON mode—RTK uses a **state machine** to parse text:
+
+```rust
+enum TestState {
+    Idle,
+    TestStart,
+    Passed,
+    Failed,
+    Summary,
+}
+
+for line in output.lines() {
+    if line.contains("::test_") {
+        state = TestState::TestStart;
+        current_test = extract_name(line);
+    } else if line.contains("PASSED") {
+        state = TestState::Passed;
+        // Omit passing tests
+    } else if line.contains("FAILED") {
+        state = TestState::Failed;
+        failures.push(current_test);
+    }
+}
+```
+
+**Result:** Only failed tests appear in output (90% reduction).
+
+### NDJSON Streaming (go test)
+
+Go's test runner outputs **newline-delimited JSON** with interleaved package events:
+
+```json
+{"Action":"run","Package":"pkg1","Test":"TestA"}
+{"Action":"fail","Package":"pkg1","Test":"TestA"}
+{"Action":"run","Package":"pkg2","Test":"TestB"}
+{"Action":"pass","Package":"pkg2","Test":"TestB"}
+```
+
+RTK parses **line-by-line** and tracks state per package:
+
+```rust
+let mut pkg_failures: HashMap<String, Vec<String>> = HashMap::new();
+
+for line in output.lines() {
+    let event: TestEvent = serde_json::from_str(line)?;
+    if event.Action == "fail" {
+        pkg_failures
+            .entry(event.Package)
+            .or_default()
+            .push(event.Test);
+    }
+}
+```
+
+**Result:** Aggregated failures per package (90% reduction).
+
+### Package Manager Detection (JS/TS)
+
+Modern JS/TS commands auto-detect package managers:
+
+```rust
+let is_pnpm = Path::new("pnpm-lock.yaml").exists();
+let is_yarn = Path::new("yarn.lock").exists();
+
+let mut cmd = if is_pnpm {
+    Command::new("pnpm").arg("exec").arg("--").arg("eslint")
+} else if is_yarn {
+    Command::new("yarn").arg("exec").arg("--").arg("eslint")
+} else {
+    Command::new("npx").arg("--no-install").arg("--").arg("eslint")
+};
+```
+
+**Why this matters:**
+- **CWD preservation**: pnpm/yarn exec preserve working directory
+- **Monorepo support**: Works in nested package.json structures
+- **No global installs**: Uses project-local dependencies only
+
+## Choosing the Right Strategy
+
+<Steps>
+  <Step title="Identify output format">
+    Is it structured (JSON, NDJSON) or unstructured (text, logs)?
+  </Step>
+  
+  <Step title="Determine information density">
+    High density (code) → filtering. Low density (test results) → failure focus.
+  </Step>
+  
+  <Step title="Check for repetition">
+    Repeated patterns (logs, errors) → deduplication. Unique items → grouping.
+  </Step>
+  
+  <Step title="Measure effectiveness">
+    Aim for 60%+ reduction. If &lt;60%, consider combining strategies.
+  </Step>
+</Steps>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Prioritize structure" icon="sitemap">
+    Keep structure (function signatures, file paths) and drop details (implementations, values)
+  </Card>
+  
+  <Card title="Focus on failures" icon="triangle-exclamation">
+    LLMs need to see errors, not successes. Hide passing tests, show only failures.
+  </Card>
+  
+  <Card title="Use JSON when available" icon="brackets-curly">
+    Structured formats (JSON, NDJSON) are easier to parse and compress than text.
+  </Card>
+  
+  <Card title="Preserve exit codes" icon="door-open">
+    Always propagate exit codes for CI/CD reliability. Filter output, not behavior.
+  </Card>
+</CardGroup>

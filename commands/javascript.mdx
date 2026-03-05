@@ -1,0 +1,476 @@
+---
+title: "JavaScript/TypeScript Stack"
+description: "Token-optimized tools for modern JavaScript and TypeScript development"
+---
+
+## Overview
+
+RTK provides comprehensive support for the modern JavaScript/TypeScript ecosystem. Achieve **70-94% token savings** through:
+
+- **JSON parsing**: Structured output from linters and compilers
+- **Error grouping**: Group by file, rule, or error code
+- **Failures only**: Show only failing tests and checks
+- **Package manager detection**: Auto-detects pnpm/npm/yarn/npx
+
+## Supported Tools
+
+<CardGroup cols={3}>
+  <Card title="ESLint" icon="code">
+    Linting with rule grouping (84% savings)
+  </Card>
+  <Card title="TypeScript" icon="typescript">
+    Compiler errors grouped by file (83% savings)
+  </Card>
+  <Card title="Next.js" icon="nextjs">
+    Build/dev with route metrics (87% savings)
+  </Card>
+  <Card title="Prettier" icon="wand">
+    Format checking (70% savings)
+  </Card>
+  <Card title="Vitest" icon="flask">
+    Test failures only (99.5% savings)
+  </Card>
+  <Card title="Playwright" icon="browser">
+    E2E test results (94% savings)
+  </Card>
+  <Card title="Prisma" icon="database">
+    Schema operations (88% savings)
+  </Card>
+</CardGroup>
+
+## rtk lint
+
+ESLint and other linters with rule-based grouping.
+
+### Usage
+
+```bash
+rtk lint [linter] [options]
+```
+
+### Supported Linters
+
+- `eslint` (default)
+- `biome`
+- `oxc` (experimental)
+
+### Examples
+
+<CodeGroup>
+```bash Standard eslint
+$ eslint .
+/path/to/project/src/components/Button.tsx
+  12:15  error  'React' must be in scope when using JSX  react/react-in-jsx-scope
+  18:23  error  Missing semicolon                        semi
+  24:5   warning  Unexpected console statement           no-console
+
+/path/to/project/src/utils/helpers.ts
+  8:10   error  'foo' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  15:3   error  Missing semicolon                          semi
+
+✖ 5 problems (4 errors, 1 warning)
+# 12+ lines, ~500 tokens
+```
+
+```bash RTK lint
+$ rtk lint
+✗ 4 errors, 1 warning (2 files)
+
+By rule:
+  semi: 2 errors
+    src/components/Button.tsx:18
+    src/utils/helpers.ts:15
+
+  react/react-in-jsx-scope: 1 error
+    src/components/Button.tsx:12
+
+  @typescript-eslint/no-unused-vars: 1 error
+    src/utils/helpers.ts:8
+
+  no-console: 1 warning
+    src/components/Button.tsx:24
+# 15 lines, ~80 tokens (84% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **Rule grouping**: Group violations by rule ID
+- **Severity levels**: Separate errors and warnings
+- **File locations**: Show file:line for each violation
+- **Exit code preservation**: Safe for CI/CD
+
+### Implementation
+
+From `src/lint_cmd.rs`:
+
+```rust
+// Forces JSON output
+cmd.arg("-f").arg("json");
+
+// Parses EslintResult JSON array
+let results: Vec<EslintResult> = serde_json::from_str(&stdout)?;
+
+// Groups by rule_id
+let mut by_rule: HashMap<String, Vec<(String, usize)>> = HashMap::new();
+for result in results {
+    for msg in result.messages {
+        by_rule.entry(msg.rule_id)
+            .or_default()
+            .push((result.file_path, msg.line));
+    }
+}
+```
+
+## rtk tsc
+
+TypeScript compiler errors grouped by file.
+
+### Usage
+
+```bash
+rtk tsc [options]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard tsc
+$ tsc
+src/components/Button.tsx(12,15): error TS2322: Type 'string' is not assignable to type 'number'.
+src/components/Button.tsx(18,23): error TS2304: Cannot find name 'React'.
+src/utils/helpers.ts(8,10): error TS6133: 'foo' is declared but its value is never read.
+src/utils/helpers.ts(15,3): error TS1005: ';' expected.
+src/api/client.ts(42,5): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
+# 5+ lines, ~300 tokens
+```
+
+```bash RTK tsc
+$ rtk tsc
+✗ 5 errors (3 files)
+
+src/components/Button.tsx (2 errors)
+  TS2322:12 Type 'string' is not assignable to type 'number'
+  TS2304:18 Cannot find name 'React'
+
+src/utils/helpers.ts (2 errors)
+  TS6133:8 'foo' is declared but its value is never read
+  TS1005:15 ';' expected
+
+src/api/client.ts (1 error)
+  TS2345:42 Argument of type 'string' is not assignable to parameter of type 'number'
+# 12 lines, ~50 tokens (83% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **File grouping**: Group errors by file
+- **Error codes**: Show TypeScript error codes (TS2322, etc.)
+- **Line numbers**: Compact format `TScode:line`
+- **Context preservation**: Keep error messages
+
+### Implementation
+
+From `src/tsc_cmd.rs`:
+
+```rust
+// Regex pattern for tsc output
+static ref TSC_ERROR: Regex = Regex::new(
+    r"^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+(TS\d+):\s+(.+)$"
+).unwrap();
+
+// Groups by file
+let mut errors: Vec<TsError> = Vec::new();
+for line in output.lines() {
+    if let Some(caps) = TSC_ERROR.captures(line) {
+        errors.push(TsError {
+            file: caps[1].to_string(),
+            line: caps[2].parse()?,
+            code: caps[5].to_string(),
+            message: caps[6].to_string(),
+        });
+    }
+}
+```
+
+## rtk next
+
+Next.js build and dev with route metrics.
+
+### Usage
+
+```bash
+rtk next <command> [options]
+```
+
+### Commands
+
+- `build`: Production build
+- `dev`: Development server
+- `start`: Start production server
+
+### Examples
+
+<CodeGroup>
+```bash Standard next build
+$ next build
+  ✔ Creating an optimized production build
+  ✔ Compiled successfully
+  ✔ Linting and checking validity of types
+  ✔ Collecting page data
+  ✔ Generating static pages (12/12)
+  ✔ Collecting build traces
+  ✔ Finalizing page optimization
+
+Route (app)                              Size     First Load JS
+┌ Λ /                                    142 B          87.3 kB
+├ Λ /about                               156 B          87.4 kB
+├ Λ /blog/[slug]                         234 B          87.5 kB
+└ Λ /api/users                           0 B            87.2 kB
++ First Load JS shared by all            87.1 kB
+  ├ chunks/framework-abc123.js              45.2 kB
+  ├ chunks/main-def456.js                   31.8 kB
+  └ other shared chunks (total)            10.1 kB
+# 20+ lines, ~800 tokens
+```
+
+```bash RTK next build
+$ rtk next build
+✓ Build successful (4 routes, 87.5 kB)
+
+/                 87.3 kB
+/about            87.4 kB
+/blog/[slug]      87.5 kB
+/api/users        87.2 kB
+# 6 lines, ~100 tokens (87% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **Route summary**: Show all routes with sizes
+- **Build metrics**: Total bundle size
+- **Error highlighting**: Preserve build errors
+- **Dev mode**: Compact startup messages
+
+## rtk prettier
+
+Format checking with files-only output.
+
+### Usage
+
+```bash
+rtk prettier [options]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard prettier --check
+$ prettier --check .
+Checking formatting...
+src/components/Button.tsx
+src/utils/helpers.ts
+src/api/client.ts
+All matched files use Prettier code style!
+# 5+ lines, ~200 tokens
+```
+
+```bash RTK prettier
+$ rtk prettier --check .
+✓ Prettier: All files formatted correctly
+# 1 line, ~60 tokens (70% savings)
+```
+
+```bash Files needing formatting
+$ rtk prettier --check .
+⚠️ 3 files need formatting:
+  src/components/Button.tsx
+  src/utils/helpers.ts
+  src/api/client.ts
+# 4 lines, ~50 tokens
+```
+</CodeGroup>
+
+### Features
+
+- **Pass/fail summary**: Single line if all formatted
+- **File list**: Show only files needing changes
+- **Write mode**: Compact confirmation on format
+
+## rtk vitest
+
+Vitest test runner showing failures only.
+
+### Usage
+
+```bash
+rtk vitest [command] [options]
+```
+
+### Examples
+
+See [Testing Commands](/commands/testing#rtk-vitest) for detailed examples.
+
+### Token Savings
+
+**99.5% savings** on passing tests, **90% savings** on failures.
+
+## rtk playwright
+
+Playwright E2E tests with failure grouping.
+
+### Usage
+
+```bash
+rtk playwright test [options]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard playwright
+$ playwright test
+
+Running 24 tests using 4 workers
+  24 passed (1.2s)
+
+To open last HTML report run:
+  npx playwright show-report
+# 10+ lines, ~150 tokens (all passing)
+```
+
+```bash RTK playwright (all passing)
+$ rtk playwright test
+✓ 24 passed (1.2s)
+# 1 line, ~10 tokens (93% savings)
+```
+
+```bash RTK playwright (failures)
+$ rtk playwright test
+✗ 2 failed, 22 passed (1.5s)
+
+tests/login.spec.ts
+  ✗ should login with valid credentials
+    Error: Timed out waiting for element
+
+tests/checkout.spec.ts
+  ✗ should complete purchase
+    Error: Expected "Success" but got "Error"
+# 9 lines, ~90 tokens (94% savings on 50+ line output)
+```
+</CodeGroup>
+
+### Features
+
+- **Failures only**: Skip passing tests
+- **Suite grouping**: Group by test file
+- **Error messages**: Preserve failure details
+- **Tee recovery**: Full output saved to file
+
+## rtk prisma
+
+Prisma CLI without ASCII art.
+
+### Usage
+
+```bash
+rtk prisma <command> [options]
+```
+
+### Supported Commands
+
+- `generate`: Generate Prisma Client
+- `migrate dev`: Create and apply migration
+- `db push`: Push schema changes
+- `studio`: Open Prisma Studio (passthrough)
+
+### Examples
+
+<CodeGroup>
+```bash Standard prisma generate
+$ prisma generate
+
+██████╗ ██████╗ ██╗██████╗ ███╗   ██╗ ██████╗
+██╔══██╗██╔══██╗██║██╔════╝████╗ ██║██╔══██╗
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "mydb"
+
+Generating Prisma Client...
+✔ Generated Prisma Client (4.8.1) to ./node_modules/@prisma/client in 823ms
+# 15+ lines, ~500 tokens
+```
+
+```bash RTK prisma generate
+$ rtk prisma generate
+✓ Prisma Client generated (4.8.1) in 823ms
+  Schema: prisma/schema.prisma
+  Datasource: PostgreSQL (mydb)
+# 3 lines, ~60 tokens (88% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **No ASCII art**: Strips Prisma logo
+- **Essential info**: Schema path, datasource, timing
+- **Migration summaries**: Compact migration output
+- **Error preservation**: Full error messages on failure
+
+## Package Manager Detection
+
+All JavaScript tools auto-detect package manager:
+
+```rust
+// From src/utils.rs
+pub fn package_manager_exec(tool: &str) -> Command {
+    if has_pnpm_lock() {
+        Command::new("pnpm").arg("exec").arg(tool)
+    } else if has_yarn_lock() {
+        Command::new("yarn").arg("exec").arg(tool)
+    } else {
+        Command::new("npx").arg(tool)
+    }
+}
+```
+
+### Detection Order
+
+1. **pnpm**: Check for `pnpm-lock.yaml`
+2. **yarn**: Check for `yarn.lock`
+3. **npm**: Default to `npx`
+
+## Exit Code Preservation
+
+All commands preserve exit codes for CI/CD:
+
+```bash
+rtk lint || exit 1
+rtk tsc || exit 1
+rtk vitest run || exit 1
+rtk playwright test || exit 1
+```
+
+## Token Savings Summary
+
+| Command | Standard Tokens | RTK Tokens | Savings |
+|---------|----------------|------------|----------|
+| `eslint` (5 errors) | 500 | 80 | **-84%** |
+| `tsc` (5 errors) | 300 | 50 | **-83%** |
+| `next build` | 800 | 100 | **-87%** |
+| `prettier --check` (all pass) | 200 | 60 | **-70%** |
+| `vitest run` (24 pass) | 3,000 | 10 | **-99.5%** |
+| `playwright test` (2 fail, 22 pass) | 1,500 | 90 | **-94%** |
+| `prisma generate` | 500 | 60 | **-88%** |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Python" icon="python" href="/commands/python">
+    Python development tools
+  </Card>
+  <Card title="Go" icon="golang" href="/commands/go">
+    Go development tools
+  </Card>
+</CardGroup>

@@ -1,0 +1,321 @@
+---
+title: 'rtk init'
+description: 'Configure RTK for Claude Code integration'
+---
+
+## Overview
+
+Initializes RTK integration with Claude Code. Creates hook for automatic command rewriting, adds awareness documentation, and patches settings.json.
+
+## Syntax
+
+```bash
+rtk init [OPTIONS]
+```
+
+## Options
+
+### Installation Modes
+
+<ParamField query="-g, --global" type="flag">
+  Install globally in `~/.claude/` (recommended)
+  
+  Creates:
+  - Hook: `~/.claude/hooks/rtk-rewrite.sh`
+  - Docs: `~/.claude/RTK.md`
+  - Reference: `@RTK.md` in `~/.claude/CLAUDE.md`
+  - Settings: Hook entry in `~/.claude/settings.json`
+</ParamField>
+
+<ParamField query="--claude-md" type="flag">
+  Legacy mode: Full 137-line injection into CLAUDE.md (no hook)
+  
+  Use when:
+  - Windows (hooks require Unix)
+  - Prefer single-file setup
+  - Testing RTK before committing to hook
+</ParamField>
+
+<ParamField query="--hook-only" type="flag" requires="global">
+  Install only the hook, skip RTK.md creation
+  
+  Use when:
+  - You want command rewriting but not meta-command awareness
+  - Minimalist setup
+</ParamField>
+
+### settings.json Patching
+
+<ParamField query="--auto-patch" type="flag">
+  Automatically patch settings.json without prompting
+</ParamField>
+
+<ParamField query="--no-patch" type="flag">
+  Skip settings.json patching, print manual instructions instead
+</ParamField>
+
+### Other Options
+
+<ParamField query="--show" type="flag">
+  Display current RTK configuration status (doesn't modify anything)
+</ParamField>
+
+<ParamField query="--uninstall" type="flag" requires="global">
+  Remove all RTK artifacts:
+  - Hook file
+  - RTK.md
+  - @RTK.md reference from CLAUDE.md
+  - settings.json hook entry
+</ParamField>
+
+## Installation Modes
+
+### Default (Global)
+
+```bash
+rtk init -g
+```
+
+**Creates:**
+1. `~/.claude/hooks/rtk-rewrite.sh` (executable)
+2. `~/.claude/RTK.md` (10-line awareness doc)
+3. `@RTK.md` reference in `~/.claude/CLAUDE.md`
+4. Hook entry in `~/.claude/settings.json` (with prompt)
+
+**Behavior:**
+- Prompts for settings.json consent (default: No)
+- Idempotent (safe to run multiple times)
+- Backs up settings.json before modification
+- Stores SHA-256 hash for integrity checks
+
+### Auto-patch (No Prompt)
+
+```bash
+rtk init -g --auto-patch
+```
+
+Same as default but skips settings.json prompt.
+
+### Manual Patch (Print Instructions)
+
+```bash
+rtk init -g --no-patch
+```
+
+Creates hook and RTK.md but prints manual settings.json instructions instead of patching.
+
+### Local (Project-specific)
+
+```bash
+rtk init
+```
+
+Injects full RTK instructions into `./CLAUDE.md` (no hook, no global config).
+
+Use when:
+- Working in a specific project
+- Team wants RTK awareness in repo
+- Don't want global changes
+
+### Hook-only (Minimal)
+
+```bash
+rtk init -g --hook-only
+```
+
+Installs only the rewrite hook. Claude won't know about meta-commands (`gain`, `discover`, `proxy`) but will rewrite raw commands to RTK.
+
+### Legacy (Full Injection)
+
+```bash
+rtk init -g --claude-md
+```
+
+Injects 137-line RTK instructions directly into `~/.claude/CLAUDE.md` (no hook, no RTK.md).
+
+Use when:
+- Windows (hooks require Unix)
+- Prefer single-file setup
+- Testing before committing to hook
+
+## Hook Behavior
+
+The RTK rewrite hook (`rtk-rewrite.sh`) runs **before every Bash tool use** in Claude Code:
+
+**What it does:**
+1. Checks if `rtk` is installed (`command -v rtk`)
+2. Checks if `jq` is installed (for JSON parsing)
+3. Rewrites raw commands to RTK equivalents:
+   - `git status` → `rtk git status`
+   - `cargo test` → `rtk cargo test`
+   - `ls -la` → `rtk ls -la`
+4. Preserves unsupported commands unchanged
+5. Gracefully falls back if RTK/jq missing
+
+**Guards:**
+- Runs **before** `set -euo pipefail` to avoid crashes on missing deps
+- Fails silently if RTK not installed
+- Preserves original command if rewrite fails
+
+**Integrity:**
+- SHA-256 hash stored on install
+- Runtime verification via `rtk verify`
+- Prevents tampering
+
+## settings.json Structure
+
+RTK adds this entry to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/you/.claude/hooks/rtk-rewrite.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Merging:**
+- Preserves existing hooks and settings
+- Appends to `PreToolUse` array (doesn't replace)
+- Idempotent (won't add duplicate entries)
+
+## Output Examples
+
+### Successful Install
+
+```
+RTK hook installed (global).
+
+  Hook:      /Users/you/.claude/hooks/rtk-rewrite.sh
+  RTK.md:    /Users/you/.claude/RTK.md (10 lines)
+  CLAUDE.md: @RTK.md reference added
+
+  settings.json: hook added
+  Backup: /Users/you/.claude/settings.json.bak
+  Restart Claude Code. Test with: git status
+```
+
+### Migration
+
+```
+RTK hook installed (global).
+
+  Hook:      /Users/you/.claude/hooks/rtk-rewrite.sh
+  RTK.md:    /Users/you/.claude/RTK.md (10 lines)
+  CLAUDE.md: @RTK.md reference added
+
+  ✅ Migrated: removed 137-line RTK block from CLAUDE.md
+              replaced with @RTK.md (10 lines)
+
+  settings.json: hook added
+  Restart Claude Code. Test with: git status
+```
+
+### Show Config
+
+```bash
+rtk init --show
+```
+
+```
+📋 rtk Configuration:
+
+✅ Hook: /Users/you/.claude/hooks/rtk-rewrite.sh (executable, with guards)
+✅ RTK.md: /Users/you/.claude/RTK.md (slim mode)
+✅ Integrity: hook hash verified
+✅ Global (~/.claude/CLAUDE.md): @RTK.md reference
+⚪ Local (./CLAUDE.md): not found
+✅ settings.json: RTK hook configured
+
+Usage:
+  rtk init              # Full injection into local CLAUDE.md
+  rtk init -g           # Hook + RTK.md + @RTK.md + settings.json (recommended)
+  rtk init -g --auto-patch    # Same as above but no prompt
+  rtk init -g --no-patch      # Skip settings.json (manual setup)
+  rtk init -g --uninstall     # Remove all RTK artifacts
+  rtk init -g --claude-md     # Legacy: full injection into ~/.claude/CLAUDE.md
+  rtk init -g --hook-only     # Hook only, no RTK.md
+```
+
+### Uninstall
+
+```bash
+rtk init -g --uninstall
+```
+
+```
+RTK uninstalled:
+  - Hook: /Users/you/.claude/hooks/rtk-rewrite.sh
+  - Integrity hash: removed
+  - RTK.md: /Users/you/.claude/RTK.md
+  - CLAUDE.md: removed @RTK.md reference
+  - settings.json: removed RTK hook entry
+
+Restart Claude Code to apply changes.
+```
+
+<CodeGroup>
+```bash Example: Recommended install
+rtk init -g --auto-patch
+# Global hook + auto-patch settings.json
+```
+
+```bash Example: Check status
+rtk init --show
+# View current configuration
+```
+
+```bash Example: Local project
+rtk init
+# Add RTK to ./CLAUDE.md
+```
+
+```bash Example: Uninstall
+rtk init -g --uninstall
+# Remove all RTK artifacts
+```
+
+```bash Example: Windows fallback
+rtk init -g --claude-md
+# Full injection (no hook)
+```
+</CodeGroup>
+
+## Platform Support
+
+| Platform | Hook Support | Recommended Mode |
+|----------|-------------|------------------|
+| macOS | ✅ Yes | `rtk init -g` |
+| Linux | ✅ Yes | `rtk init -g` |
+| Windows | ❌ No | `rtk init -g --claude-md` |
+| WSL | ✅ Yes | `rtk init -g` |
+
+## Idempotency
+
+`rtk init` is safe to run multiple times:
+- Checks if files already exist
+- Compares content before overwriting
+- Updates only if content changed
+- Won't duplicate settings.json entries
+- Backs up before modifications
+
+## Exit Codes
+
+- `0` - Success
+- `1` - Error (permission denied, invalid config, etc.)
+
+## Related Commands
+
+- `rtk verify` - Verify hook integrity
+- `rtk config` - View/edit RTK configuration
+- `rtk gain` - View token savings

@@ -1,80 +1,442 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get started with RTK in 5 minutes - install, verify, and start saving tokens
 ---
 
-## Get started in three steps
+# Quick Start
 
-Get your documentation site running locally and make your first customization.
+Get RTK up and running in under 5 minutes. This guide walks you through installation, verification, initialization, and your first token-optimized commands.
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+- macOS, Linux, or Windows
+- Command-line access
+- Claude Code, Cursor, or another AI coding assistant (optional but recommended)
+
+## Step 1: Install RTK
+
+Choose your preferred installation method:
+
+<CodeGroup>
+```bash Homebrew (macOS/Linux)
+brew install rtk
+```
+
+```bash Quick Install (Linux/macOS)
+curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh
+```
+
+```bash Cargo (from source)
+cargo install --git https://github.com/rtk-ai/rtk
+```
+</CodeGroup>
+
+<Note>
+If you already have RTK installed, verify it's the correct package:
+
+```bash
+rtk gain
+```
+
+If this command works (even if it says "No tracking data yet"), you're good to go. Skip to [Step 3](#step-3-initialize-rtk).
+</Note>
+
+## Step 2: Verify Installation
+
+Confirm RTK is installed correctly:
+
+```bash
+rtk --version
+```
+
+<CodeGroup>
+```bash Expected Output
+rtk 0.24.0
+```
+
+```bash Verify It's Token Killer (Not Type Kit)
+rtk gain
+```
+
+```text Expected Output
+No tracking data yet.
+Run some rtk commands to start tracking savings.
+```
+</CodeGroup>
+
+<Warning>
+If `rtk gain` returns "command not found" but `rtk --version` works, you installed the **wrong** RTK (Rust Type Kit).
+
+Uninstall and reinstall the correct package:
+```bash
+cargo uninstall rtk
+cargo install --git https://github.com/rtk-ai/rtk
+```
+</Warning>
+
+## Step 3: Initialize RTK
+
+Set up RTK to work automatically with your AI coding assistant:
+
+```bash
+rtk init --global
+```
+
+<Steps>
+  <Step title="Run the init command">
+    ```bash
+    rtk init --global
+    ```
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    This installs a hook that automatically rewrites commands across all projects.
+  </Step>
+  
+  <Step title="Answer the prompt">
+    ```
+    Patch settings.json? [y/N]: y
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    Type `y` and press Enter to register the hook with Claude Code.
+  </Step>
+  
+  <Step title="Restart Claude Code">
+    Close and reopen Claude Code for the hook to take effect.
+  </Step>
+</Steps>
 
-### Step 2: Deploy your changes
+<Note>
+**What just happened?**
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+- **Hook installed:** `~/.claude/hooks/rtk-rewrite.sh` now intercepts bash commands
+- **Context optimized:** `~/.claude/RTK.md` added (only 10 lines, saves ~2000 tokens vs old method)
+- **Settings patched:** `~/.claude/settings.json` now registers the hook
+- **Backup created:** Original settings saved to `~/.claude/settings.json.bak`
+</Note>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Step 4: Test Your First Command
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Try a few RTK commands to see the difference:
 
-### Step 3: Go live
+### Directory Listing
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+<CodeGroup>
+```bash Standard ls
+ls -la
+```
 
-## Next steps
+```text Output (45 lines, ~800 tokens)
+drwxr-xr-x  15 user  staff    480 Jan 23 10:00 .
+drwxr-xr-x   5 user  staff    160 Jan 23 09:00 ..
+-rw-r--r--   1 user  staff   1234 Jan 23 10:00 Cargo.toml
+-rw-r--r--   1 user  staff    567 Jan 23 10:00 README.md
+drwxr-xr-x   8 user  staff    256 Jan 23 10:00 src
+drwxr-xr-x   3 user  staff     96 Jan 23 10:00 target
+...
+```
 
-Now that you have your docs running, explore these key features:
+```bash RTK optimized
+rtk ls .
+```
+
+```text Output (12 lines, ~150 tokens - 81% savings)
+📁 my-project/
+├── src/ (8 files)
+│   ├── main.rs
+│   ├── lib.rs
+│   └── ...
+├── Cargo.toml
+├── README.md
+└── target/
+```
+</CodeGroup>
+
+### Git Status
+
+<CodeGroup>
+```bash Standard git
+git status
+```
+
+```text Output (~25 lines, ~400 tokens)
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   src/main.rs
+	modified:   src/lib.rs
+	modified:   Cargo.toml
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	src/new_feature.rs
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+
+```bash RTK optimized
+rtk git status
+```
+
+```text Output (4 lines, ~80 tokens - 80% savings)
+3 modified:
+  src/main.rs, src/lib.rs, Cargo.toml
+1 untracked:
+  src/new_feature.rs
+```
+</CodeGroup>
+
+### Git Push
+
+<CodeGroup>
+```bash Standard git push
+git add .
+git commit -m "Add new feature"
+git push
+```
+
+```text Output (15+ lines, ~200 tokens)
+Enumerating objects: 5, done.
+Counting objects: 100% (5/5), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 342 bytes | 342.00 KiB/s, done.
+Total 3 (delta 2), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (2/2), completed with 2 local objects.
+To github.com:user/repo.git
+   abc1234..def5678  main -> main
+```
+
+```bash RTK optimized
+rtk git add .
+rtk git commit -m "Add new feature"
+rtk git push
+```
+
+```text Output (3 lines, ~30 tokens - 85% savings)
+ok ✓
+ok ✓ abc1234
+ok ✓ main
+```
+</CodeGroup>
+
+### Test Runner (Failures Only)
+
+<CodeGroup>
+```bash Standard cargo test
+cargo test
+```
+
+```text Output (200+ lines on failure)
+running 15 tests
+test utils::test_parse ... ok
+test utils::test_format ... ok
+test core::test_init ... ok
+...
+test core::test_edge_case ... FAILED
+test utils::test_overflow ... FAILED
+
+failures:
+
+---- core::test_edge_case stdout ----
+thread 'core::test_edge_case' panicked at 'assertion failed: ...
+...
+```
+
+```bash RTK optimized
+rtk test cargo test
+```
+
+```text Output (~20 lines, 90% savings)
+FAILED: 2/15 tests
+  ✗ test_edge_case: assertion failed at src/lib.rs:42
+  ✗ test_overflow: panic at src/utils.rs:18
+```
+</CodeGroup>
+
+## Step 5: View Your Savings
+
+After running a few RTK commands, check your token savings:
+
+```bash
+rtk gain
+```
+
+<CodeGroup>
+```text Sample Output
+📊 RTK Token Savings
+════════════════════════════════════════
+
+Total commands:    12
+Input tokens:      3,847
+Output tokens:     892
+Tokens saved:      2,955 (76.8%)
+
+By Command:
+────────────────────────────────────────
+Command               Count      Saved     Avg%
+rtk git status            4      1,247    81.2%
+rtk git push              3        618    92.1%
+rtk ls                    3        724    68.4%
+rtk test cargo test       2        366    88.7%
+```
+
+```bash View savings over time
+rtk gain --graph
+```
+
+```text Daily Savings (last 30 days)
+────────────────────────────────────────
+01-23 │███████████████████                      6.4K
+01-24 │██████████████████                       5.9K
+01-25 │                                         18
+01-26 │████████████████████████████████████████ 13.0K
+```
+</CodeGroup>
+
+<Note>
+**First run?** The `rtk gain` command will show "No tracking data yet" until you've run at least one RTK command.
+
+RTK tracks all usage in a local SQLite database at `~/.local/share/rtk/history.db`.
+</Note>
+
+## What's Next?
+
+You're now set up and saving tokens! Here are some next steps:
 
 <CardGroup cols={2}>
+  <Card title="Explore Commands" icon="terminal" href="/commands/overview">
+    See the full list of 50+ optimized commands for git, testing, linting, and more.
+  </Card>
+  
+  <Card title="Hook Configuration" icon="hook" href="/integration/hooks">
+    Learn how auto-rewrite hooks work and customize them for your workflow.
+  </Card>
+  
+  <Card title="Analytics Deep Dive" icon="chart-line" href="/analytics/gain-command">
+    Export token savings data as JSON/CSV for dashboards and reports.
+  </Card>
+  
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Common issues and solutions for installation, hooks, and command failures.
+  </Card>
+</CardGroup>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+## Tips for Maximum Savings
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+<Steps>
+  <Step title="Use hooks for automatic optimization">
+    With `rtk init --global`, you never need to type `rtk` manually - all commands are rewritten automatically.
+  </Step>
+  
+  <Step title="Prefix commands manually if hooks aren't installed">
+    If you skipped the hook setup, manually prefix commands:
+    ```bash
+    rtk git status
+    rtk npm test
+    rtk docker ps
+    ```
+  </Step>
+  
+  <Step title="Check savings regularly">
+    Run `rtk gain` weekly to see your cumulative savings and identify high-impact commands.
+  </Step>
+  
+  <Step title="Report missing commands">
+    If you find a command RTK doesn't optimize, [open an issue](https://github.com/rtk-ai/rtk/issues) - we're always adding more!
+  </Step>
+</Steps>
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+## Common Workflows
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+### Git Workflow
 
+```bash
+# Check status
+rtk git status
+
+# View recent commits
+rtk git log -10
+
+# See changes
+rtk git diff
+
+# Stage and commit
+rtk git add .
+rtk git commit -m "Your message"
+
+# Push to remote
+rtk git push
+```
+
+### Test-Driven Development
+
+```bash
+# Run tests (show failures only)
+rtk test cargo test
+rtk test npm test
+rtk pytest
+rtk go test
+
+# Run linters
+rtk lint
+rtk cargo clippy
+rtk ruff check
+```
+
+### Package Management
+
+```bash
+# List dependencies
+rtk pnpm list
+rtk pip list
+
+# Check for updates
+rtk pnpm outdated
+rtk pip outdated
+
+# Install packages (quiet mode)
+rtk pnpm install react
+rtk pip install requests
+```
+
+### Container Operations
+
+```bash
+# List containers
+rtk docker ps
+
+# View logs (deduplicated)
+rtk docker logs my-container
+
+# Kubernetes
+rtk kubectl get pods
+rtk kubectl logs my-pod
+```
+
+## Getting Help
+
+If you run into issues:
+
+<CardGroup cols={2}>
+  <Card title="Documentation" icon="book" href="/">
+    Browse the full documentation for guides, references, and examples.
+  </Card>
+  
+  <Card title="GitHub Issues" icon="github" href="https://github.com/rtk-ai/rtk/issues">
+    Report bugs, request features, or ask questions.
+  </Card>
+  
+  <Card title="Troubleshooting" icon="life-ring" href="/troubleshooting">
+    Fix common problems with installation, hooks, and commands.
+  </Card>
+  
+  <Card title="Community" icon="users" href="https://www.rtk-ai.app">
+    Join the RTK community and share your token savings!
+  </Card>
 </CardGroup>
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+**Pro Tip:** Run `rtk gain --all --format json` to export your savings data and create custom dashboards or CI/CD reports.
 </Note>

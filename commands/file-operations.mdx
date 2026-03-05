@@ -1,0 +1,306 @@
+---
+title: "File Operations"
+description: "Token-optimized file listing, reading, search, and find commands"
+---
+
+## Overview
+
+RTK provides token-optimized alternatives to common file operations: `ls`, `cat`, `grep`/`rg`, and `find`. These commands achieve **70-80% token savings** by filtering noise, grouping results, and intelligent truncation.
+
+## rtk ls
+
+Compact directory listing with tree format and aggregate counts.
+
+### Usage
+
+```bash
+rtk ls [path] [flags]
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard ls
+$ ls -la
+drwxr-xr-x  15 user  staff    480 Jan 23 10:00 .
+drwxr-xr-x   5 user  staff    160 Jan 23 09:00 ..
+-rw-r--r--   1 user  staff   1234 Jan 23 10:00 Cargo.toml
+-rw-r--r--   1 user  staff   5678 Jan 23 10:00 README.md
+drwxr-xr-x   8 user  staff    256 Jan 23 10:00 src
+...
+# 45 lines, ~800 tokens
+```
+
+```bash RTK ls
+$ rtk ls
+📁 my-project/
+├── src/ (8 files)
+│   ├── main.rs
+│   └── lib.rs
+├── Cargo.toml
+└── README.md
+
+# 12 lines, ~150 tokens (80% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **Tree format**: Hierarchical directory structure
+- **Aggregate counts**: Shows file counts for directories
+- **Noise filtering**: Automatically excludes `.git`, `node_modules`, `target`, etc.
+- **Smart truncation**: Shows most relevant files first
+
+### Implementation Details
+
+From `src/ls.rs`:
+
+- Filters noise directories (30+ common patterns)
+- Groups files by directory
+- Shows permissions, size, and modification time only when relevant
+- Preserves exit codes for error handling
+
+## rtk read
+
+Smart file reading with language-aware filtering.
+
+### Usage
+
+```bash
+rtk read <file> [options]
+```
+
+### Options
+
+<ParamField path="-l, --level" type="string" default="minimal">
+  Filter level: `none`, `minimal`, `aggressive`
+  - `none`: No filtering (raw file)
+  - `minimal`: Remove comments and blank lines
+  - `aggressive`: Strip function bodies, keep signatures only
+</ParamField>
+
+<ParamField path="-m, --max-lines" type="number">
+  Maximum lines to output (smart truncation)
+</ParamField>
+
+<ParamField path="-n, --line-numbers" type="flag">
+  Show line numbers
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Minimal filtering
+$ rtk read src/main.rs
+# Removes comments, blank lines (70% savings)
+```
+
+```bash Aggressive filtering
+$ rtk read src/lib.rs -l aggressive
+# Shows only function signatures, type definitions
+# Strips function bodies (90% savings)
+```
+
+```bash With line numbers
+$ rtk read config.toml -n
+# Shows line numbers for reference
+```
+</CodeGroup>
+
+### Supported Languages
+
+From `src/filter.rs`, RTK detects and filters:
+
+- **Rust**: `.rs` - Strip comments, docstrings, attributes
+- **Python**: `.py` - Remove docstrings, comments, decorators
+- **JavaScript/TypeScript**: `.js`, `.ts`, `.jsx`, `.tsx` - Strip comments, JSDoc
+- **Go**: `.go` - Remove comments, build tags
+- **C/C++**: `.c`, `.cpp`, `.h` - Strip comments, preprocessor directives
+- **Java**: `.java` - Remove comments, annotations
+- **JSON**: `.json` - Preserve structure, optional value stripping
+
+### Token Savings
+
+<Tabs>
+  <Tab title="Minimal (default)">
+    **70% savings** - Removes comments, blank lines, docstrings
+  </Tab>
+  <Tab title="Aggressive">
+    **90% savings** - Keeps signatures only, strips function bodies
+  </Tab>
+</Tabs>
+
+## rtk grep
+
+Grouped search results with context and smart truncation.
+
+### Usage
+
+```bash
+rtk grep <pattern> <path> [options]
+```
+
+### Options
+
+<ParamField path="-m, --max-line-len" type="number" default="120">
+  Maximum line length to display
+</ParamField>
+
+<ParamField path="-n, --max-results" type="number" default="50">
+  Maximum results to show
+</ParamField>
+
+<ParamField path="-c, --context-only" type="flag">
+  Show only surrounding context, not full lines
+</ParamField>
+
+<ParamField path="-t, --type" type="string">
+  File type filter (e.g., `rust`, `js`, `py`)
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Standard grep
+$ grep -rn "TODO" .
+src/main.rs:42:    // TODO: implement feature
+src/lib.rs:18:    // TODO: add tests
+tests/integration.rs:91:    // TODO: fix edge case
+...
+# 50+ lines, ~2000 tokens
+```
+
+```bash RTK grep
+$ rtk grep "TODO" .
+🔍 3 in 3F:
+
+src/main.rs:42
+  // TODO: implement feature
+
+src/lib.rs:18
+  // TODO: add tests
+
+tests/integration.rs:91
+  // TODO: fix edge case
+
+# 12 lines, ~400 tokens (80% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **Grouped by file**: Results organized by file path
+- **Context highlighting**: Shows surrounding context for matches
+- **Smart truncation**: Long lines trimmed with ellipsis
+- **Regex support**: Full regex pattern matching (uses `rg` under the hood)
+
+### Implementation Details
+
+From `src/grep_cmd.rs`:
+
+- Uses `ripgrep` (rg) for speed, falls back to `grep`
+- Converts BRE alternation `\|` to PCRE `|` for compatibility
+- Groups results by file with counts
+- Strips ANSI color codes for token optimization
+
+## rtk find
+
+Compact file finding with gitignore awareness.
+
+### Usage
+
+```bash
+rtk find <pattern> [path] [options]
+```
+
+### Options
+
+<ParamField path="-m, --max-results" type="number" default="50">
+  Maximum results to show
+</ParamField>
+
+<ParamField path="-d, --max-depth" type="number">
+  Maximum directory depth
+</ParamField>
+
+<ParamField path="-t, --type" type="string" default="f">
+  File type: `f` (file), `d` (directory)
+</ParamField>
+
+<ParamField path="-i, --case-insensitive" type="flag">
+  Case-insensitive matching
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Native find
+$ find . -name "*.rs"
+./src/main.rs
+./src/lib.rs
+./src/git.rs
+./src/grep_cmd.rs
+...
+# 50+ lines
+```
+
+```bash RTK find
+$ rtk find "*.rs" .
+📂 12 matches:
+
+src/
+  main.rs, lib.rs, git.rs, grep_cmd.rs
+  ls.rs, read.rs, runner.rs, tracking.rs
+
+tests/
+  integration.rs, unit.rs
+
+# 10 lines, grouped by directory
+```
+</CodeGroup>
+
+### Native find Compatibility
+
+RTK supports native find syntax:
+
+```bash
+rtk find . -name "*.rs" -type f -maxdepth 3
+```
+
+**Supported flags**:
+- `-name <pattern>`: File name pattern
+- `-type <f|d>`: File or directory
+- `-maxdepth <n>`: Maximum depth
+- `-iname <pattern>`: Case-insensitive name
+
+**Unsupported flags** (use `find` directly):
+- Compound predicates: `-not`, `-or`, `-and`
+- Actions: `-exec`, `-delete`
+- Advanced filters: `-regex`, `-perm`, `-size`, `-mtime`
+
+### Features
+
+- **Gitignore awareness**: Automatically respects `.gitignore`
+- **Smart grouping**: Groups results by directory
+- **Glob patterns**: Supports `*` and `?` wildcards
+- **Performance**: Uses `ignore` crate for fast traversal
+
+## Token Savings Summary
+
+| Command | Standard Tokens | RTK Tokens | Savings |
+|---------|----------------|------------|----------|
+| `ls -la` | 800 | 150 | **-81%** |
+| `cat file.rs` | 4,000 | 1,200 | **-70%** |
+| `grep "TODO" .` | 2,000 | 400 | **-80%** |
+| `find . -name "*.rs"` | 1,500 | 300 | **-80%** |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Git Commands" icon="code-branch" href="/commands/git">
+    Explore git operation optimizations
+  </Card>
+  <Card title="Testing" icon="flask" href="/commands/testing">
+    Learn about test output filtering
+  </Card>
+</CardGroup>

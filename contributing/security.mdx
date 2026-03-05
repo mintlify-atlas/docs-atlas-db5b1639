@@ -1,0 +1,356 @@
+---
+title: Security
+description: Security policy, review process, and best practices for RTK contributions
+---
+
+RTK is a CLI tool that executes shell commands and handles user input. This page covers security policies, the 3-layer review process, and best practices for contributors.
+
+## Reporting Vulnerabilities
+
+If you discover a security vulnerability in RTK, please report it privately:
+
+- **Email**: security@rtk-ai.dev (or create a private security advisory on GitHub)
+- **Response time**: We aim to acknowledge reports within 48 hours
+- **Disclosure**: We follow responsible disclosure practices (90-day embargo)
+
+<Warning>
+  **Please do NOT:**
+  - Open public GitHub issues for security vulnerabilities
+  - Disclose vulnerabilities on social media or forums before we've had a chance to address them
+</Warning>
+
+## Security Threats
+
+RTK faces several security concerns:
+
+- **Shell injection**: Command execution vulnerabilities
+- **Supply chain attacks**: Malicious dependencies
+- **Backdoors**: Logic bombs, exfiltration code
+- **Data leaks**: tracking.db exposure, telemetry abuse
+- **Privilege escalation**: Container/Docker operations
+
+## 3-Layer Security Review Process
+
+### Layer 1: GitHub Action Security Checks
+
+Every PR triggers automated security scanning via `.github/workflows/security-check.yml`:
+
+<Steps>
+  <Step title="Dependency audit">
+    **cargo audit** - Detects known CVEs in dependencies
+    ```bash
+    cargo audit
+    ```
+    Fails the build if vulnerabilities are found.
+  </Step>
+
+  <Step title="Critical files alert">
+    Flags modifications to high-risk files:
+    - `src/runner.rs` - Shell execution engine
+    - `src/summary.rs` - Command output aggregation
+    - `src/tracking.rs` - SQLite database operations
+    - `src/pnpm_cmd.rs` - Package name validation
+    - `src/container.rs` - Docker/container operations
+    - `Cargo.toml` - Dependency manifest
+    - `.github/workflows/*.yml` - CI/CD pipelines
+  </Step>
+
+  <Step title="Dangerous pattern scan">
+    Regex-based detection of suspicious code:
+    ```bash
+    bash scripts/detect-dangerous-patterns.sh <PR_DIFF>
+    ```
+    
+    Scans for:
+    - Shell execution (`Command::new("sh")`)
+    - Environment manipulation (`.env("LD_PRELOAD")`)
+    - Network operations (`reqwest::`, `std::net::`)
+    - Unsafe code blocks
+    - Panic-inducing patterns (`.unwrap()` in production)
+    - Logic bombs (`SystemTime::now() > ...`)
+    - Obfuscation (base64/hex strings)
+  </Step>
+
+  <Step title="Clippy security lints">
+    **cargo clippy** enforces Rust best practices:
+    ```bash
+    cargo clippy --all-targets
+    ```
+    Catches unsafe patterns, performance issues, and code quality problems.
+  </Step>
+</Steps>
+
+Results are posted in the PR's GitHub Actions summary.
+
+### Layer 2: Claude Code Skill (Automated Review)
+
+For maintainers with Claude Code access:
+
+```bash
+# Run the RTK PR security review skill
+/rtk-pr-security <PR_NUMBER>
+```
+
+The skill performs comprehensive analysis:
+- Reviews all changed files for security issues
+- Checks for dangerous patterns with context
+- Validates dependency changes against crates.io
+- Identifies potential logic bombs and backdoors
+- Generates detailed security report
+
+**Benefits**:
+- Faster review than manual inspection
+- Consistent security standards
+- Context-aware pattern detection
+- Reduces maintainer burden
+
+### Layer 3: Manual Security Review
+
+For PRs modifying critical files or adding dependencies, maintainers perform manual review:
+
+<Steps>
+  <Step title="Review PR description">
+    Verify intent matches implementation:
+    ```bash
+    gh pr view <PR_NUMBER>
+    ```
+  </Step>
+
+  <Step title="Inspect diff">
+    Download and review the full diff:
+    ```bash
+    gh pr diff <PR_NUMBER> > /tmp/pr.diff
+    less /tmp/pr.diff
+    ```
+  </Step>
+
+  <Step title="Run dangerous pattern detection">
+    ```bash
+    bash scripts/detect-dangerous-patterns.sh /tmp/pr.diff
+    ```
+  </Step>
+
+  <Step title="Audit new dependencies">
+    For dependency additions in `Cargo.toml`:
+    - Check crates.io page (downloads, maintainer, license)
+    - Review GitHub repository (activity, issues, PRs)
+    - Verify no typosquatting (similar names to popular crates)
+    - Check for recent security advisories
+  </Step>
+
+  <Step title="Test locally">
+    ```bash
+    gh pr checkout <PR_NUMBER>
+    cargo build --release
+    ./target/release/rtk <test-commands>
+    ```
+  </Step>
+
+  <Step title="Complete review checklist">
+    - [ ] No critical files modified OR changes justified + reviewed by 2 maintainers
+    - [ ] No dangerous patterns OR patterns explained + safe
+    - [ ] No new dependencies OR deps audited on crates.io
+    - [ ] PR description matches actual code changes
+    - [ ] No logic bombs (time-based triggers, conditional backdoors)
+    - [ ] Code quality acceptable (no unexplained complexity spikes)
+  </Step>
+</Steps>
+
+## Critical Files Requiring Enhanced Review
+
+### Tier 1: Shell Execution & System Interaction
+
+- **`src/runner.rs`** - Shell command execution engine (primary injection vector)
+- **`src/summary.rs`** - Command output aggregation (data exfiltration risk)
+- **`src/tracking.rs`** - SQLite database operations (privacy/telemetry concerns)
+
+### Tier 2: Input Validation
+
+- **`src/pnpm_cmd.rs`** - Package name validation (prevents injection via malicious names)
+- **`src/container.rs`** - Docker/container operations (privilege escalation risk)
+
+### Tier 3: Supply Chain & CI/CD
+
+- **`Cargo.toml`** - Dependency manifest (typosquatting, backdoored crates)
+- **`.github/workflows/*.yml`** - CI/CD pipelines (release tampering, secret exfiltration)
+
+<Warning>
+  If your PR modifies ANY of these files, expect:
+  - Detailed manual security review
+  - Request for clarification on design choices
+  - Potentially slower merge timeline
+  - 2-reviewer approval requirement
+</Warning>
+
+## Dangerous Patterns
+
+The security scanner checks for these patterns:
+
+| Pattern | Risk | Example |
+|---------|------|----------|
+| `Command::new("sh")` | Shell injection | Spawns shell with user input |
+| `.env("LD_PRELOAD")` | Library hijacking | Preloads malicious shared libraries |
+| `reqwest::`, `std::net::` | Data exfiltration | Unexpected network operations |
+| `unsafe {` | Memory safety | Bypasses Rust's guarantees |
+| `.unwrap()` in `src/` | DoS via panic | Crashes on invalid input |
+| `SystemTime::now() > ...` | Logic bombs | Delayed malicious behavior |
+| Base64/hex strings | Obfuscation | Hides malicious URLs/commands |
+
+### Example: Shell Injection
+
+```rust
+// ❌ DANGEROUS: Shell injection risk
+let user_input = get_arg();
+Command::new("sh")
+    .arg("-c")
+    .arg(format!("echo {}", user_input))  // User input in shell command!
+    .output();
+
+// ✅ SAFE: No shell, direct binary execution
+let user_input = get_arg();
+Command::new("echo")
+    .arg(user_input)  // Passed as argument, not evaluated by shell
+    .output();
+```
+
+### Example: Logic Bomb
+
+```rust
+// ❌ DANGEROUS: Time-based trigger
+use std::time::SystemTime;
+
+if SystemTime::now() > SystemTime::UNIX_EPOCH + Duration::from_secs(1735689600) {
+    // Malicious code executes after 2025-01-01
+    std::fs::remove_dir_all("/");
+}
+
+// ✅ SAFE: No time-based conditions
+// If you need time-based logic, make it explicit and documented
+```
+
+## Security Best Practices
+
+### Error Handling
+
+```rust
+use anyhow::{Context, Result};
+
+// ✅ GOOD: Graceful error handling
+let path = std::env::args().nth(1)
+    .context("Missing path argument")?;
+
+// ❌ BAD: Panic on invalid input (DoS risk)
+let path = std::env::args().nth(1).unwrap();
+```
+
+### Input Validation
+
+```rust
+use regex::Regex;
+
+// ✅ GOOD: Validate package names
+fn validate_package_name(name: &str) -> Result<()> {
+    let valid = Regex::new(r"^[a-z0-9-]+$").unwrap();
+    if !valid.is_match(name) {
+        anyhow::bail!("Invalid package name: {}", name);
+    }
+    Ok(())
+}
+
+// ❌ BAD: No validation
+fn install_package(name: &str) -> Result<()> {
+    Command::new("npm").arg("install").arg(name).output()?;
+    Ok(())
+}
+```
+
+### Avoid Secrets in Code
+
+```rust
+// ❌ BAD: Hardcoded secrets
+const API_KEY: &str = "sk_live_1234567890abcdef";
+
+// ✅ GOOD: Environment variables or config files
+let api_key = std::env::var("API_KEY")
+    .context("API_KEY environment variable not set")?;
+```
+
+### Exit Code Preservation
+
+```rust
+// ✅ GOOD: Preserve underlying tool's exit code
+if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    eprintln!("{}", stderr);
+    std::process::exit(output.status.code().unwrap_or(1));
+}
+
+// ❌ BAD: Always exit 0 (hides errors)
+let output = Command::new("git").args(args).output()?;
+println!("{}", String::from_utf8_lossy(&output.stdout));
+Ok(())  // Returns success even if git failed!
+```
+
+## Dependency Security
+
+New dependencies added to `Cargo.toml` must meet these criteria:
+
+- **Downloads**: >10,000 on crates.io (or strong justification if lower)
+- **Maintainer**: Verified GitHub profile + track record of other crates
+- **License**: MIT or Apache-2.0 compatible
+- **Activity**: Recent commits (within 6 months)
+- **No typosquatting**: Manual verification against similar crate names
+
+### Red Flags
+
+- Brand new crate (&lt;1 month old) with low downloads
+- Anonymous maintainer with no GitHub history
+- Crate name suspiciously similar to popular crate (e.g., `serid` vs `serde`)
+- License change in recent versions
+- Deprecated or unmaintained
+
+### Auditing Dependencies
+
+```bash
+# Check for known vulnerabilities
+cargo audit
+
+# View dependency tree
+cargo tree
+
+# Check for outdated dependencies
+cargo outdated
+
+# Update dependencies
+cargo update
+```
+
+## Disclosure Timeline
+
+When vulnerabilities are reported:
+
+1. **Day 0**: Acknowledgment sent to reporter
+2. **Day 7**: Maintainers assess severity and impact
+3. **Day 14**: Patch development begins
+4. **Day 30**: Patch released + CVE filed (if applicable)
+5. **Day 90**: Public disclosure (or earlier if patch is deployed)
+
+Critical vulnerabilities (remote code execution, data exfiltration) may be fast-tracked.
+
+## Security Tooling
+
+- **`cargo audit`** - Automated CVE scanning (runs in CI)
+- **`cargo deny`** - License compliance + banned dependencies
+- **`cargo clippy`** - Lints for unsafe patterns
+- **GitHub Dependabot** - Automated dependency updates
+- **GitHub Code Scanning** - Static analysis via CodeQL (planned)
+
+## Contact
+
+- **Security issues**: security@rtk-ai.dev
+- **General questions**: https://github.com/rtk-ai/rtk/discussions
+- **Maintainers**: @FlorianBruniaux (active fork maintainer)
+
+---
+
+**Last updated**: 2026-02-02

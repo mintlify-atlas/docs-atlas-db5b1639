@@ -1,0 +1,370 @@
+---
+title: "Custom Database Path"
+description: "Configure RTK tracking database location"
+---
+
+## Default Database Location
+
+RTK stores token savings tracking data in a SQLite database at the platform-specific default location:
+
+| Platform | Default Path |
+|----------|-------------|
+| **Linux** | `~/.local/share/rtk/history.db` |
+| **macOS** | `~/Library/Application Support/rtk/history.db` |
+| **Windows** | `%APPDATA%\rtk\history.db` |
+
+<Note>
+The database stores 90 days of command history with automatic cleanup. Each record includes: command, timestamps, input/output tokens, savings percentage, and execution time.
+</Note>
+
+## Why Customize Database Path?
+
+Common use cases for custom database locations:
+
+### 1. Shared Team Tracking
+
+Track token savings across multiple developers:
+
+```bash
+# Shared network location
+export RTK_DB_PATH="/mnt/shared/team-rtk/history.db"
+```
+
+All team members point to the same database, aggregating savings across the entire project.
+
+### 2. CI/CD Integration
+
+Persist tracking data in CI pipelines:
+
+```yaml
+# GitHub Actions example
+env:
+  RTK_DB_PATH: ${{ github.workspace }}/.rtk/ci-history.db
+
+steps:
+  - name: Run tests with RTK
+    run: rtk cargo test
+  
+  - name: Upload tracking data
+    uses: actions/upload-artifact@v3
+    with:
+      name: rtk-tracking
+      path: .rtk/ci-history.db
+```
+
+### 3. Multi-User Systems
+
+Separate tracking per user on shared machines:
+
+```bash
+# Per-user database
+export RTK_DB_PATH="/home/$USER/.rtk/history.db"
+```
+
+### 4. Project-Specific Tracking
+
+Track different projects independently:
+
+```bash
+# Project A
+cd ~/projects/project-a
+export RTK_DB_PATH="$PWD/.rtk/history.db"
+rtk gain  # Shows only project-a stats
+
+# Project B
+cd ~/projects/project-b
+export RTK_DB_PATH="$PWD/.rtk/history.db"
+rtk gain  # Shows only project-b stats
+```
+
+### 5. Disk Space Management
+
+Move database to larger partition:
+
+```bash
+# Small SSD → large HDD
+export RTK_DB_PATH="/mnt/data/rtk/history.db"
+```
+
+## Configuration Methods
+
+### Method 1: Environment Variable (Highest Priority)
+
+```bash
+# Temporary (current session only)
+export RTK_DB_PATH="/path/to/custom.db"
+
+# Permanent (add to ~/.bashrc or ~/.zshrc)
+echo 'export RTK_DB_PATH="/path/to/custom.db"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+<Warning>
+Environment variable overrides all other settings. If set, RTK ignores the config file database path.
+</Warning>
+
+### Method 2: Config File
+
+Edit `~/.config/rtk/config.toml`:
+
+```toml
+[tracking]
+database_path = "/path/to/custom.db"
+```
+
+<CodeGroup>
+```toml Linux Example
+[tracking]
+database_path = "/home/user/.rtk/custom.db"
+```
+
+```toml macOS Example
+[tracking]
+database_path = "/Users/user/.rtk/custom.db"
+```
+
+```toml Windows Example
+[tracking]
+database_path = "C:\\Users\\user\\.rtk\\custom.db"
+```
+</CodeGroup>
+
+### Priority Order
+
+RTK resolves the database path using this priority (highest to lowest):
+
+1. **`RTK_DB_PATH` environment variable** — Overrides everything
+2. **`config.toml` setting** — Used if env var not set
+3. **Platform default** — Fallback if neither is configured
+
+```rust
+// From src/tracking.rs:891-907
+fn get_db_path() -> Result<PathBuf> {
+    // Priority 1: Environment variable RTK_DB_PATH
+    if let Ok(custom_path) = std::env::var("RTK_DB_PATH") {
+        return Ok(PathBuf::from(custom_path));
+    }
+
+    // Priority 2: Configuration file
+    if let Ok(config) = crate::config::Config::load() {
+        if let Some(db_path) = config.tracking.database_path {
+            return Ok(db_path);
+        }
+    }
+
+    // Priority 3: Default platform-specific location
+    let data_dir = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
+    Ok(data_dir.join("rtk").join("history.db"))
+}
+```
+
+## Use Cases with Examples
+
+### Shared Team Tracking
+
+**Scenario**: 5 developers working on the same project, want to measure team-wide token savings.
+
+**Setup**:
+```bash
+# On shared file server: /mnt/team-share/rtk/
+mkdir -p /mnt/team-share/rtk
+
+# Each developer adds to ~/.bashrc:
+echo 'export RTK_DB_PATH="/mnt/team-share/rtk/history.db"' >> ~/.bashrc
+
+# View team-wide stats
+rtk gain --monthly
+# Shows combined savings across all developers
+```
+
+### CI/CD Pipeline Tracking
+
+**Scenario**: Track token savings in GitHub Actions across all CI runs.
+
+```yaml
+# .github/workflows/test.yml
+name: Tests
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup RTK
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+      
+      - name: Run tests
+        env:
+          RTK_DB_PATH: ${{ github.workspace }}/.rtk/ci-history.db
+        run: |
+          rtk cargo test
+          rtk gain --format json > rtk-stats.json
+      
+      - name: Upload stats
+        uses: actions/upload-artifact@v3
+        with:
+          name: rtk-tracking
+          path: |
+            .rtk/ci-history.db
+            rtk-stats.json
+```
+
+### Per-Project Tracking
+
+**Scenario**: Developer works on multiple projects, wants separate tracking per project.
+
+```bash
+# Project A
+cd ~/projects/web-app
+mkdir -p .rtk
+echo 'export RTK_DB_PATH="$PWD/.rtk/history.db"' > .envrc
+# (Use direnv to auto-load per directory)
+
+# Project B
+cd ~/projects/cli-tool
+mkdir -p .rtk
+echo 'export RTK_DB_PATH="$PWD/.rtk/history.db"' > .envrc
+
+# View per-project stats
+cd ~/projects/web-app
+rtk gain  # Only web-app stats
+
+cd ~/projects/cli-tool
+rtk gain  # Only cli-tool stats
+```
+
+### Multi-User Isolation
+
+**Scenario**: Shared Linux server with multiple users, each needs independent tracking.
+
+```bash
+# Add to /etc/profile.d/rtk.sh (system-wide)
+export RTK_DB_PATH="/home/$USER/.local/share/rtk/history.db"
+
+# Each user gets their own database
+user1@server:~$ rtk gain  # Uses /home/user1/.local/share/rtk/history.db
+user2@server:~$ rtk gain  # Uses /home/user2/.local/share/rtk/history.db
+```
+
+## Verification
+
+Check which database path RTK is using:
+
+```bash
+# Method 1: Check environment variable
+echo $RTK_DB_PATH
+
+# Method 2: Check config file
+cat ~/.config/rtk/config.toml | grep database_path
+
+# Method 3: Inspect actual database location
+rtk gain  # Run any command to trigger DB creation
+find ~ -name history.db 2>/dev/null
+```
+
+## Migration Between Databases
+
+Move tracking data from old database to new location:
+
+```bash
+# Copy existing database
+cp ~/.local/share/rtk/history.db /new/path/history.db
+
+# Update environment variable
+export RTK_DB_PATH="/new/path/history.db"
+
+# Verify migration
+rtk gain --history
+# Should show historical data from old database
+```
+
+<Note>
+RTK databases are standard SQLite files. You can merge databases using `sqlite3` CLI tools if needed.
+</Note>
+
+## Troubleshooting
+
+### Database Not Found
+
+**Symptom**: `rtk gain` shows zero commands despite usage history.
+
+**Solution**: Check if path points to wrong location.
+
+```bash
+# Verify current path
+echo $RTK_DB_PATH
+
+# List all RTK databases
+find ~ -name history.db 2>/dev/null
+
+# Point to correct database
+export RTK_DB_PATH="/correct/path/history.db"
+```
+
+### Permission Denied
+
+**Symptom**: `Error: Permission denied (os error 13)` when running RTK commands.
+
+**Solution**: Ensure RTK can write to the database directory.
+
+```bash
+# Check permissions
+ls -ld $(dirname $RTK_DB_PATH)
+
+# Fix permissions
+chmod 755 $(dirname $RTK_DB_PATH)
+chmod 644 $RTK_DB_PATH
+```
+
+### Config File Ignored
+
+**Symptom**: Database path in `config.toml` not respected.
+
+**Solution**: Check if environment variable is set (it takes precedence).
+
+```bash
+# Check env var
+echo $RTK_DB_PATH
+
+# If set, unset it to use config file
+unset RTK_DB_PATH
+
+# Or remove from shell config
+sed -i '/RTK_DB_PATH/d' ~/.bashrc
+```
+
+## Database Schema
+
+<Accordion title="SQLite Schema Details">
+The RTK database contains two main tables:
+
+**`commands` table**:
+- `id`: Integer primary key
+- `timestamp`: RFC3339 UTC timestamp (indexed)
+- `original_cmd`: Standard command (e.g., "git status")
+- `rtk_cmd`: RTK command used (e.g., "rtk git status")
+- `input_tokens`: Estimated tokens from standard output
+- `output_tokens`: Actual tokens from RTK output
+- `saved_tokens`: Calculated savings (input - output)
+- `savings_pct`: Savings percentage ((saved / input) * 100)
+- `exec_time_ms`: Execution time in milliseconds
+- `project_path`: Working directory path (for project-scoped queries)
+
+**`parse_failures` table**:
+- `id`: Integer primary key
+- `timestamp`: RFC3339 UTC timestamp (indexed)
+- `raw_command`: Unparsed command string
+- `error_message`: Parse error description
+- `fallback_succeeded`: Whether fallback execution succeeded (0/1)
+
+Automatic cleanup runs after each write, deleting records older than 90 days.
+</Accordion>
+
+## See Also
+
+- [Tee Recovery](/advanced/tee-recovery) — Full output recovery on command failures
+- [Proxy Mode](/advanced/proxy-mode) — Bypass RTK filtering while tracking metrics

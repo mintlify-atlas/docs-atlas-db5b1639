@@ -1,0 +1,479 @@
+---
+title: 'rtk discover Command'
+description: 'Scan Claude Code session history to find missed token savings opportunities'
+icon: 'magnifying-glass'
+---
+
+## Overview
+
+The `rtk discover` command scans your Claude Code session history (stored as JSONL files) to find commands where RTK would have saved tokens but wasn't used. It helps you:
+
+- **Measure what you're missing** — see exactly how many tokens you could save
+- **Identify habits** — find which commands you keep running without rtk
+- **Spot new opportunities** — see unhandled commands that could become rtk features
+
+<Note>
+`rtk discover` is read-only and never modifies your Claude Code session files. It only analyzes JSONL logs to identify potential savings.
+</Note>
+
+## Quick Start
+
+```bash
+# Scan current project, last 30 days
+rtk discover
+
+# Scan all Claude Code projects
+rtk discover --all
+
+# Last 7 days across all projects
+rtk discover --all --since 7
+
+# Filter by project name (substring match)
+rtk discover -p myproject
+
+# Machine-readable output
+rtk discover --format json
+```
+
+## Command Options
+
+<ResponseField name="--all" type="flag">
+Scan all Claude Code projects instead of just the current working directory
+</ResponseField>
+
+<ResponseField name="--since" type="integer" default="30">
+Number of days to look back in session history (default: 30 days)
+</ResponseField>
+
+<ResponseField name="-p, --project" type="string">
+Filter sessions by project name (substring match on directory name)
+</ResponseField>
+
+<ResponseField name="--format" type="string" default="text">
+Output format: `text` (human-readable) or `json` (machine-readable)
+</ResponseField>
+
+<ResponseField name="-v, --verbose" type="flag">
+Show verbose output including session file paths and parse errors
+</ResponseField>
+
+## How It Works
+
+### Session Discovery
+
+1. **Project Directory Resolution**
+   - Default: Current working directory → `~/.claude/projects/-path-to-current-dir/`
+   - `--all`: All directories in `~/.claude/projects/`
+   - `-p <name>`: Substring match on project directory names
+
+2. **JSONL File Scanning**
+   - Recursively walks project directories (includes `subagents/` subdirectories)
+   - Filters by modification time (last N days via `--since`)
+   - Parses JSONL session logs for `Bash` tool use events
+
+3. **Command Classification**
+   - Extracts `Bash` commands from `tool_use` blocks
+   - Matches against RTK's internal command registry
+   - Estimates token savings based on `tool_result` output lengths
+
+### Classification Categories
+
+<Tabs>
+  <Tab title="Supported">
+    Commands RTK already handles with dedicated filters:
+    - **Git**: `git status`, `git diff`, `git log`, etc.
+    - **Cargo**: `cargo test`, `cargo build`, `cargo clippy`
+    - **JavaScript**: `tsc`, `eslint`, `prettier`, `vitest`, `playwright`
+    - **Files**: `cat`, `grep`, `rg`, `ls`, `find`
+    - **Infra**: `docker ps`, `kubectl get`
+
+    These represent **missed savings** — you ran the raw command instead of `rtk <cmd>`.
+  </Tab>
+  <Tab title="Unsupported">
+    Commands RTK doesn't handle yet:
+    - `terraform plan`
+    - `ansible-playbook`
+    - `make build`
+    - Custom scripts and tools
+
+    These represent **feature requests** — open an issue if you want RTK support.
+  </Tab>
+  <Tab title="Ignored">
+    Commands excluded from analysis:
+    - Shell builtins: `cd`, `echo`, `export`, `mkdir`
+    - Already using RTK: `rtk git status`
+    - Trivial commands: `pwd`, `true`, `false`
+    - Heredocs and complex shell constructs
+  </Tab>
+</Tabs>
+
+## Output Examples
+
+### Text Format (Default)
+
+```bash
+rtk discover
+```
+
+```
+RTK Discover -- Savings Opportunities
+====================================================
+Scanned: 142 sessions (last 30 days), 1786 Bash commands
+Already using RTK: 108 commands (6%)
+
+MISSED SAVINGS -- Commands RTK already handles
+------------------------------------------------------------------------
+Command              Count    RTK Equivalent        Status         Est. Savings
+git log                434    rtk git               existing       ~55.9K tokens
+cargo test             203    rtk cargo             existing       ~49.9K tokens
+ls -la                 107    rtk ls                existing       ~11.8K tokens
+gh pr                   80    rtk gh                existing       ~10.4K tokens
+cargo fmt               45    rtk cargo             passthrough     ~6.8K tokens
+------------------------------------------------------------------------
+Total: 986 commands -> ~143.9K tokens saveable
+
+TOP UNHANDLED COMMANDS -- open an issue?
+----------------------------------------------------
+Command              Count    Example
+git checkout            84    git checkout feature/my-branch
+cargo run               32    cargo run -- gain --help
+terraform plan          18    terraform plan -var-file=prod.tfvars
+make build              12    make build
+----------------------------------------------------
+-> github.com/rtk-ai/rtk/issues
+
+~estimated from tool_result output sizes
+```
+
+**Sections explained:**
+
+1. **Header**: Sessions scanned, total Bash commands found, RTK usage rate
+2. **Missed Savings**: Commands RTK handles but you didn't use (sorted by estimated savings)
+3. **Top Unhandled**: Commands RTK doesn't support yet (sorted by frequency)
+
+### Status Column
+
+| Status | Meaning |
+|--------|--------|
+| `existing` | Dedicated RTK handler with filtering (e.g., `git status` → `git.rs:run_status()`) |
+| `passthrough` | Works via external subcommand, no filtering (e.g., `cargo fmt` → `Other` variant) |
+| `not-supported` | RTK doesn't handle this command at all |
+
+### JSON Format
+
+```bash
+rtk discover --format json
+```
+
+```json
+{
+  "sessions_scanned": 142,
+  "total_commands": 1786,
+  "already_rtk": 108,
+  "since_days": 30,
+  "supported": [
+    {
+      "command": "git log",
+      "count": 434,
+      "rtk_equivalent": "rtk git",
+      "category": "Git",
+      "estimated_savings_tokens": 55900,
+      "estimated_savings_pct": 70.0,
+      "rtk_status": "existing"
+    },
+    {
+      "command": "cargo test",
+      "count": 203,
+      "rtk_equivalent": "rtk cargo",
+      "category": "Cargo",
+      "estimated_savings_tokens": 49900,
+      "estimated_savings_pct": 90.0,
+      "rtk_status": "existing"
+    }
+  ],
+  "unsupported": [
+    {
+      "base_command": "git checkout",
+      "count": 84,
+      "example": "git checkout feature/my-branch"
+    },
+    {
+      "base_command": "cargo run",
+      "count": 32,
+      "example": "cargo run -- gain --help"
+    }
+  ],
+  "parse_errors": 0
+}
+```
+
+## Token Estimation
+
+### How Savings Are Calculated
+
+```python
+# For each command:
+output_tokens = tool_result.content.len() / 4  # Real data from JSONL
+estimated_savings = output_tokens * (savings_pct / 100)
+
+# Fallback when tool_result missing:
+output_tokens = category_avg_tokens(category, subcmd)
+```
+
+**Category averages** (used when real output length unavailable):
+
+| Category | Subcmd | Avg Tokens |
+|----------|--------|------------|
+| Git | `log`, `diff`, `show` | 200 |
+| Git | `status`, `add`, etc. | 40 |
+| Cargo | `test` | 500 |
+| Cargo | `build`, `clippy` | 150 |
+| Tests | All | 800 |
+| Files | All | 100 |
+| Build | All | 300 |
+
+### Savings Percentages by Command
+
+| Command | Savings % | Source |
+|---------|-----------|--------|
+| `git diff` | 80% | Subcommand override |
+| `cargo test` | 90% | Subcommand override |
+| `vitest run` | 99% | Rule default |
+| `eslint` | 84% | Rule default |
+| `tsc` | 83% | Rule default |
+| `grep` | 75% | Rule default |
+| `ls` | 65% | Rule default |
+
+## Use Cases
+
+### Weekly Habit Check
+
+```bash
+# Check last week for missed opportunities
+rtk discover --since 7
+
+# If you see high counts for common commands:
+# → Install the RTK hook for automatic rewriting
+rtk init -g
+```
+
+### Project-Specific Analysis
+
+```bash
+# Analyze a specific project by name
+rtk discover -p myproject --since 90
+
+# Compare two projects:
+rtk discover -p project-a --format json > a.json
+rtk discover -p project-b --format json > b.json
+jq -s '{a: .[0].supported | length, b: .[1].supported | length}' a.json b.json
+```
+
+### Feature Request Prioritization
+
+```bash
+# Export unsupported commands to CSV
+rtk discover --format json | jq -r '
+  .unsupported[] |
+  [.base_command, .count, .example] |
+  @csv
+' > unsupported.csv
+
+# Open in Excel, sort by count descending
+# → Top commands are prime candidates for new RTK features
+```
+
+### Team Adoption Metrics
+
+```bash
+# Measure RTK adoption rate across team
+rtk discover --all --format json | jq '
+  {
+    total: .total_commands,
+    rtk_usage: .already_rtk,
+    adoption_pct: (.already_rtk / .total_commands * 100 | round)
+  }
+'
+```
+
+## Advanced Usage
+
+### Filter by Project Substring
+
+```bash
+# Match any project containing "aristote"
+rtk discover -p aristote
+
+# Project directory names are encoded as:
+# /Users/foo/Sites/aristote → -Users-foo-Sites-aristote
+# Substring match works on the encoded name
+```
+
+### Verbose Output
+
+```bash
+rtk discover -v
+```
+
+```
+Scanning 142 session files...
+  /Users/foo/.claude/projects/-Users-foo-Sites-rtk/1706883200_abc123.jsonl
+  /Users/foo/.claude/projects/-Users-foo-Sites-rtk/1706883300_def456.jsonl
+  ...
+
+Warning: skipping /path/to/malformed.jsonl: unexpected EOF
+
+RTK Discover -- Savings Opportunities
+...
+
+Parse errors skipped: 1
+```
+
+### Combine with `rtk gain`
+
+```bash
+# 1. Check what you're missing
+rtk discover
+
+# 2. Install hook to capture those savings automatically
+rtk init -g
+
+# 3. Wait a week, then verify gains
+rtk gain --weekly
+```
+
+## Troubleshooting
+
+### No sessions found
+
+```bash
+# Check if Claude Code projects directory exists
+ls ~/.claude/projects/
+
+# Verify current directory is a Claude Code project
+pwd
+ls ~/.claude/projects/ | grep "$(pwd | sed 's/\//-/g')"
+
+# Try scanning all projects
+rtk discover --all
+```
+
+### Low command counts
+
+```bash
+# Increase time window
+rtk discover --since 90
+
+# Check session modification times
+find ~/.claude/projects/ -name "*.jsonl" -mtime -30 -ls
+```
+
+### Parse errors
+
+```bash
+# Run with verbose to see which files failed
+rtk discover -v
+
+# Manually inspect failed JSONL file
+head -100 /path/to/failed.jsonl
+
+# Validate JSON format
+jq . < /path/to/failed.jsonl > /dev/null
+```
+
+### Zero savings shown
+
+```bash
+# Check if you're already using RTK everywhere
+rtk discover | grep "Already using RTK"
+
+# If adoption is 100%:
+# → Congratulations! No missed savings.
+# → Use `rtk gain` to see actual savings over time.
+```
+
+## Privacy & Security
+
+<Warning>
+`rtk discover` reads Claude Code session files which may contain:
+- Command history (Bash tool invocations)
+- Command output (tool_result content)
+- Project paths (encoded in directory names)
+
+**Data handling:**
+- All analysis happens locally (no network requests)
+- No session data is stored or logged
+- Output contains only aggregated statistics (not raw session content)
+</Warning>
+
+## Command Registry
+
+`rtk discover` uses the same command classification engine as the RTK hook. The registry includes:
+
+<Tabs>
+  <Tab title="Git">
+    - `git status`, `log`, `diff`, `show`, `add`, `commit`, `push`, `pull`, `branch`, `fetch`, `stash`, `worktree`
+    - Savings: 59-80% depending on subcommand
+  </Tab>
+  <Tab title="Cargo">
+    - `cargo build`, `test`, `clippy`, `check`, `fmt`
+    - Savings: 80-90% (fmt is passthrough)
+  </Tab>
+  <Tab title="JavaScript/TypeScript">
+    - `tsc`, `eslint`, `biome`, `prettier`, `vitest`, `jest`, `playwright`, `prisma`, `next`
+    - Package manager prefixes: `pnpm`, `npx`, `npm`
+    - Savings: 70-99%
+  </Tab>
+  <Tab title="Python">
+    - `mypy`, `ruff`, `pytest`, `pip`
+    - Savings: 80-90%
+  </Tab>
+  <Tab title="Go">
+    - `go test`, `build`, `vet`, `golangci-lint`
+    - Savings: 75-90%
+  </Tab>
+  <Tab title="Files">
+    - `cat`, `head`, `tail`, `grep`, `rg`, `ls`, `find`
+    - Savings: 60-75%
+  </Tab>
+  <Tab title="Infra">
+    - `docker ps`, `images`, `logs`
+    - `kubectl get`, `logs`
+    - Savings: 85%
+  </Tab>
+  <Tab title="Network">
+    - `curl`, `wget`
+    - Savings: 65-70%
+  </Tab>
+  <Tab title="GitHub">
+    - `gh pr`, `issue`, `run`, `repo`, `api`
+    - Savings: 80-87%
+  </Tab>
+  <Tab title="Package Managers">
+    - `pnpm list`, `outdated`, `install`
+    - `npm run`, `exec`
+    - Savings: 70-80%
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+1. **Run Weekly**: `rtk discover --since 7` to catch habit changes
+2. **Install Hook**: If you see high missed savings, install the RTK hook with `rtk init -g`
+3. **Track Adoption**: Use `--format json` to track adoption rate over time
+4. **Feature Requests**: Export unsupported commands and open GitHub issues for top candidates
+5. **Project-Specific**: Use `-p` to analyze individual projects before rolling out RTK team-wide
+
+## See Also
+
+<CardGroup cols={2}>
+
+<Card title="rtk gain Command" icon="chart-line" href="/analytics/gain-command">
+View actual token savings over time with temporal breakdowns
+</Card>
+
+<Card title="RTK Hook" icon="code" href="/setup/hooks">
+Automatic command rewriting for 100% RTK adoption
+</Card>
+
+</CardGroup>

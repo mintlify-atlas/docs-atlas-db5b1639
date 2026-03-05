@@ -1,0 +1,428 @@
+---
+title: Building from Source
+description: How to build and compile RTK locally
+---
+
+This guide covers building RTK from source, including prerequisites, development builds, release builds, and cross-compilation.
+
+## Prerequisites
+
+### Rust Toolchain
+
+RTK requires Rust 1.70 or later (2021 edition).
+
+<Steps>
+  <Step title="Install Rust">
+    Install Rust using rustup:
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+  </Step>
+
+  <Step title="Verify installation">
+    Confirm Rust and Cargo are installed:
+    ```bash
+    rustc --version
+    cargo --version
+    ```
+  </Step>
+
+  <Step title="Update toolchain (optional)">
+    If you already have Rust, update to the latest version:
+    ```bash
+    rustup update
+    ```
+  </Step>
+</Steps>
+
+### System Dependencies
+
+RTK uses `rusqlite` with the `bundled` feature, so no external SQLite installation is required.
+
+**Platform-specific requirements**:
+
+- **macOS**: Xcode Command Line Tools
+  ```bash
+  xcode-select --install
+  ```
+
+- **Linux**: gcc, pkg-config
+  ```bash
+  # Debian/Ubuntu
+  sudo apt-get install build-essential pkg-config
+
+  # Fedora/RHEL
+  sudo dnf install gcc pkg-config
+  ```
+
+- **Windows**: MSVC or GNU toolchain via rustup
+  ```bash
+  rustup toolchain install stable-x86_64-pc-windows-msvc
+  ```
+
+## Development Builds
+
+### Quick Build
+
+Build RTK for local development:
+
+```bash
+# Clone the repository
+git clone https://github.com/rtk-ai/rtk.git
+cd rtk
+
+# Build in debug mode (faster compilation, slower runtime)
+cargo build
+
+# Binary location: target/debug/rtk
+./target/debug/rtk --version
+```
+
+### Development Build Profile
+
+Debug builds include:
+- Debug symbols for debugging
+- No optimizations (fast compilation)
+- Runtime assertions enabled
+- Larger binary size (~10-15 MB)
+
+**Use for**: Active development, debugging, testing
+
+### Running Without Installing
+
+Test RTK without installing:
+
+```bash
+# Run directly with cargo
+cargo run -- git status
+cargo run -- --help
+
+# Pass arguments after --
+cargo run -- git log -v --oneline
+```
+
+### Local Installation
+
+Install the development build to `~/.cargo/bin/`:
+
+```bash
+# Install from local directory
+cargo install --path .
+
+# Verify installation
+rtk --version
+rtk gain
+```
+
+<Note>
+  Local installs override crates.io versions. Uninstall with `cargo uninstall rtk`.
+</Note>
+
+## Release Builds
+
+### Optimized Build
+
+Build RTK with full optimizations:
+
+```bash
+# Build with release profile
+cargo build --release
+
+# Binary location: target/release/rtk
+./target/release/rtk --version
+
+# Install optimized binary
+cargo install --path . --release
+```
+
+### Release Profile Configuration
+
+From `Cargo.toml` (lines 34-39):
+
+```toml
+[profile.release]
+opt-level = 3          # Maximum optimization
+lto = true             # Link-time optimization
+codegen-units = 1      # Single codegen unit for better optimization
+strip = true           # Remove debug symbols
+panic = "abort"        # Smaller binary size
+```
+
+**Benefits**:
+- **Binary size**: ~4.1 MB (stripped)
+- **Startup time**: &lt;10ms
+- **Memory**: 2-5 MB typical usage
+- **Optimization**: Maximum runtime performance
+
+<Warning>
+  Release builds take significantly longer to compile (2-5 minutes vs 30 seconds for debug).
+</Warning>
+
+## Build Commands Reference
+
+### From CLAUDE.md
+
+```bash
+# Development build
+cargo build                   # raw
+rtk cargo build               # preferred (token-optimized output)
+
+# Release build (optimized)
+cargo build --release
+rtk cargo build --release
+
+# Run directly without building
+cargo run -- <command>
+
+# Install locally
+cargo install --path .
+```
+
+### Quality Checks
+
+Run quality gates before committing:
+
+```bash
+# Check without building (fast)
+cargo check                   # raw
+rtk cargo check               # preferred
+
+# Format code
+cargo fmt --all
+
+# Run linter
+cargo clippy --all-targets    # raw
+rtk cargo clippy --all-targets # preferred
+
+# Run tests
+cargo test                    # raw
+rtk cargo test                # preferred
+
+# Full quality pipeline
+cargo fmt --all && cargo clippy --all-targets && cargo test
+```
+
+<Note>
+  If you have RTK installed, prefer `rtk cargo <cmd>` for token-optimized output (60-90% reduction).
+</Note>
+
+## Cross-Compilation
+
+### Linux x86_64 to ARM64
+
+```bash
+# Install ARM64 target
+rustup target add aarch64-unknown-linux-gnu
+
+# Install cross-compilation toolchain
+sudo apt-get install gcc-aarch64-linux-gnu
+
+# Build for ARM64
+cargo build --release --target aarch64-unknown-linux-gnu
+
+# Binary: target/aarch64-unknown-linux-gnu/release/rtk
+```
+
+### macOS Universal Binary
+
+```bash
+# Install targets
+rustup target add x86_64-apple-darwin
+rustup target add aarch64-apple-darwin
+
+# Build for both architectures
+cargo build --release --target x86_64-apple-darwin
+cargo build --release --target aarch64-apple-darwin
+
+# Create universal binary
+lipo -create \
+  target/x86_64-apple-darwin/release/rtk \
+  target/aarch64-apple-darwin/release/rtk \
+  -output target/release/rtk-universal
+```
+
+### Windows from Linux (via MinGW)
+
+```bash
+# Install Windows target
+rustup target add x86_64-pc-windows-gnu
+
+# Install MinGW toolchain
+sudo apt-get install mingw-w64
+
+# Build for Windows
+cargo build --release --target x86_64-pc-windows-gnu
+
+# Binary: target/x86_64-pc-windows-gnu/release/rtk.exe
+```
+
+## Package Building
+
+### DEB Package (Debian/Ubuntu)
+
+<Steps>
+  <Step title="Install cargo-deb">
+    ```bash
+    cargo install cargo-deb
+    ```
+  </Step>
+
+  <Step title="Build DEB package">
+    ```bash
+    cargo deb
+    ```
+    Package created at: `target/debian/rtk_<version>_<arch>.deb`
+  </Step>
+
+  <Step title="Install DEB package">
+    ```bash
+    sudo dpkg -i target/debian/rtk_*.deb
+    ```
+  </Step>
+</Steps>
+
+### RPM Package (Fedora/RHEL)
+
+<Steps>
+  <Step title="Install cargo-generate-rpm">
+    ```bash
+    cargo install cargo-generate-rpm
+    ```
+  </Step>
+
+  <Step title="Build release binary first">
+    ```bash
+    cargo build --release
+    ```
+  </Step>
+
+  <Step title="Generate RPM package">
+    ```bash
+    cargo generate-rpm
+    ```
+    Package created at: `target/generate-rpm/rtk-<version>.<arch>.rpm`
+  </Step>
+
+  <Step title="Install RPM package">
+    ```bash
+    sudo rpm -i target/generate-rpm/rtk-*.rpm
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Package configurations are defined in `Cargo.toml` under `[package.metadata.deb]` and `[package.metadata.generate-rpm]`.
+</Note>
+
+## Build Performance Tips
+
+### Speed Up Compilation
+
+1. **Use a faster linker**:
+   ```toml
+   # .cargo/config.toml
+   [target.x86_64-unknown-linux-gnu]
+   linker = "clang"
+   rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+   ```
+
+2. **Incremental compilation** (default in debug mode):
+   ```bash
+   export CARGO_INCREMENTAL=1
+   ```
+
+3. **Parallel jobs**:
+   ```bash
+   # Use all CPU cores
+   cargo build -j$(nproc)
+   ```
+
+### Reduce Binary Size
+
+The release profile already optimizes for size. Additional options:
+
+```toml
+[profile.release]
+opt-level = "z"     # Optimize for size instead of speed
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1
+```
+
+<Warning>
+  **Don't optimize for size in production!** The default `opt-level = 3` provides the best runtime performance (&lt;10ms startup).
+</Warning>
+
+## Troubleshooting
+
+### Compilation Errors
+
+**Rust version too old**:
+```bash
+rustup update stable
+```
+
+**Missing system dependencies** (Linux):
+```bash
+# Debian/Ubuntu
+sudo apt-get install build-essential pkg-config libssl-dev
+
+# Fedora/RHEL
+sudo dnf install gcc pkg-config openssl-devel
+```
+
+**Linker errors** (Windows):
+```bash
+# Install MSVC toolchain
+rustup toolchain install stable-x86_64-pc-windows-msvc
+rustup default stable-x86_64-pc-windows-msvc
+```
+
+### Clean Builds
+
+Remove build artifacts and start fresh:
+
+```bash
+# Remove target directory
+cargo clean
+
+# Rebuild
+cargo build --release
+```
+
+### Verify Binary
+
+Check the built binary:
+
+```bash
+# Verify it runs
+./target/release/rtk --version
+
+# Check size
+ls -lh target/release/rtk
+
+# Check symbols are stripped (Linux/macOS)
+nm target/release/rtk | wc -l  # Should be 0 or very small
+
+# Test basic functionality
+./target/release/rtk git status
+./target/release/rtk gain
+```
+
+## CI/CD Builds
+
+RTK uses GitHub Actions for automated builds:
+
+- **Platforms**: macOS, Linux (x86_64 + ARM64), Windows
+- **Workflow**: `.github/workflows/release.yml`
+- **Artifacts**: Binaries, DEB/RPM packages, checksums
+- **Triggers**: Version tags (`v*`)
+
+View the workflow for multi-platform build configuration.
+
+## Next Steps
+
+- [Testing Guide](/contributing/testing) - Run tests and verify changes
+- [Architecture](/contributing/architecture) - Understand the codebase structure
+- [Adding Commands](/contributing/adding-commands) - Implement new filters

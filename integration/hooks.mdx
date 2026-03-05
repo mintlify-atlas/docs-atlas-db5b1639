@@ -1,0 +1,539 @@
+---
+title: "Hook Architecture"
+description: "Understanding RTK's auto-rewrite hook for Claude Code"
+icon: "hook"
+---
+
+## What Are Hooks?
+
+Claude Code hooks are scripts that intercept tool execution at specific lifecycle points. RTK uses the **PreToolUse** hook to modify Bash commands before they reach the shell.
+
+<Note>
+**Hook lifecycle**: Claude decides to run a command → PreToolUse hook intercepts → Hook rewrites command → Modified command executes → Claude receives output
+</Note>
+
+### PreToolUse Hook Workflow
+
+```
+Claude Code types:  git status
+         │
+         ▼
+┌────────────────────────────────┐
+│  ~/.claude/settings.json        │
+│  PreToolUse hook registered     │
+└────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────┐
+│  rtk-rewrite.sh                 │
+│  Input: "git status"            │
+│  Output: "rtk git status"       │  ← Transparent rewrite
+└────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────┐
+│  RTK (Rust binary)              │
+│  Executes: git status           │
+│  Filters output                 │
+└────────────────────────────────┘
+         │
+         ▼
+Claude receives:  "3 modified, 1 untracked ✓"
+                  ↑ not 50 lines of raw git output
+```
+
+The rewrite is **transparent**: Claude never knows the command was modified. It just sees optimized output.
+
+## Auto-Rewrite Hook Architecture
+
+RTK's hook script (`rtk-rewrite.sh`) is a Bash script that:
+
+1. **Receives**: JSON input from Claude Code with the original command
+2. **Parses**: Extracts the command string
+3. **Matches**: Pattern-matches against known RTK commands
+4. **Rewrites**: Transforms to `rtk <cmd>` equivalent
+5. **Returns**: JSON output with `updatedInput` field
+
+If no match is found, the hook returns empty JSON (command passes through unchanged).
+
+### Hook Script Structure
+
+```bash
+#!/bin/bash
+# Guards: check dependencies before set -euo pipefail
+if ! command -v rtk &>/dev/null || ! command -v jq &>/dev/null; then
+  exit 0  # Silently skip if dependencies missing
+fi
+
+set -euo pipefail
+
+INPUT=$(cat)
+CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+
+# Skip if empty or already using rtk
+if [ -z "$CMD" ] || [[ "$CMD" =~ ^rtk\ ]]; then
+  exit 0
+fi
+
+# Pattern matching and rewriting...
+REWRITTEN=""
+
+if echo "$CMD" | grep -qE '^git[[:space:]]+status'; then
+  REWRITTEN=$(echo "$CMD" | sed 's/^git status/rtk git status/')
+elif echo "$CMD" | grep -qE '^cargo[[:space:]]+test'; then
+  REWRITTEN=$(echo "$CMD" | sed 's/^cargo test/rtk cargo test/')
+# ... more patterns
+fi
+
+# Return JSON with updated command
+if [ -n "$REWRITTEN" ]; then
+  jq -n --arg cmd "$REWRITTEN" '{
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "allow",
+      "updatedInput": {"command": $cmd}
+    }
+  }'
+fi
+```
+
+### Guards and Safety
+
+The hook includes **guard clauses** to handle edge cases:
+
+- **Dependency check**: Exits silently if `rtk` or `jq` not found
+- **Empty command**: Skips if no command string
+- **Already rewritten**: Skips if command already starts with `rtk`
+- **Heredocs**: Skips commands with `<<` (shell syntax incompatible with rewriting)
+
+<Warning>
+Guards **must** appear before `set -euo pipefail`. Otherwise, missing dependencies cause the hook to crash instead of failing gracefully.
+</Warning>
+
+## How the Hook Works
+
+### 1. Command Detection
+
+The hook pattern-matches the **first word** of the command:
+
+```bash
+# Matches:
+git status
+git log -10
+cargo test --release
+
+# Does NOT match (already using rtk):
+rtk git status
+rtk cargo test
+```
+
+### 2. Environment Variable Preservation
+
+Commands with environment variable prefixes are handled correctly:
+
+```bash
+# Input:
+TEST_SESSION_ID=2 npx playwright test
+
+# Output:
+TEST_SESSION_ID=2 rtk playwright test
+```
+
+The hook strips env vars for pattern matching, then re-adds them after rewriting.
+
+### 3. Command Chaining
+
+The hook only rewrites the **first command** in chains:
+
+```bash
+# Input:
+git add . && git commit -m "fix" && git push
+
+# Output:
+rtk git add . && rtk git commit -m "fix" && rtk git push
+```
+
+<Note>
+Each command in the chain is rewritten independently because Claude Code invokes the hook once per command.
+</Note>
+
+### 4. Passthrough Commands
+
+Commands without RTK support pass through unchanged:
+
+```bash
+# Input:
+echo "hello"
+
+# Output:
+echo "hello"  # No rewrite
+```
+
+RTK's passthrough support means unhandled commands still work.
+
+## Commands Rewritten
+
+The hook rewrites the following commands:
+
+### Version Control
+
+| Raw Command | Rewritten To |
+|-------------|-------------|
+| `git status/diff/log/add/commit/push/pull/branch/fetch/stash/show` | `rtk git ...` |
+| `gh pr/issue/run/api/release` | `rtk gh ...` |
+
+### Build & Test
+
+| Raw Command | Rewritten To |
+|-------------|-------------|
+| `cargo test/build/clippy/check/install/nextest/fmt` | `rtk cargo ...` |
+| `go test/build/vet` | `rtk go ...` |
+| `golangci-lint` | `rtk golangci-lint` |
+
+### JavaScript/TypeScript
+
+| Raw Command | Rewritten To |
+|-------------|-------------|
+| `vitest` / `pnpm test` | `rtk vitest run` |
+| `tsc` / `vue-tsc` | `rtk tsc` |
+| `eslint` / `pnpm lint` | `rtk lint` |
+| `prettier` | `rtk prettier` |
+| `playwright` | `rtk playwright` |
+| `prisma` | `rtk prisma` |
+| `npm test` / `npm run <script>` | `rtk npm ...` |
+| `pnpm list/ls/outdated` | `rtk pnpm ...` |
+
+### Python
+
+| Raw Command | Rewritten To |
+|-------------|-------------|
+| `pytest` / `python -m pytest` | `rtk pytest` |
+| `ruff check/format` | `rtk ruff ...` |
+| `pip list/outdated/install/show` | `rtk pip ...` |
+| `uv pip ...` | `rtk pip ...` |
+| `mypy` / `python -m mypy` | `rtk mypy` |
+
+### Files & Search
+
+| Raw Command | Rewritten To |
+|-------------|-------------|
+| `cat <file>` | `rtk read <file>` |
+| `rg/grep <pattern>` | `rtk grep <pattern>` |
+| `ls` | `rtk ls` |
+| `tree` | `rtk tree` |
+| `find <pattern>` | `rtk find <pattern>` |
+| `diff` | `rtk diff` |
+| `head -N <file>` | `rtk read <file> --max-lines N` |
+
+### Containers
+
+| Raw Command | Rewritten To |
+|-------------|-------------|
+| `docker ps/images/logs/run/build/exec/compose` | `rtk docker ...` |
+| `kubectl get/logs/describe/apply` | `rtk kubectl ...` |
+
+### Network
+
+| Raw Command | Rewritten To |
+|-------------|-------------|
+| `curl` | `rtk curl` |
+| `wget` | `rtk wget` |
+
+### Infrastructure
+
+| Raw Command | Rewritten To |
+|-------------|-------------|
+| `aws` | `rtk aws` |
+| `psql` | `rtk psql` |
+
+<Note>
+Commands already using `rtk`, heredocs (`<<`), and unrecognized commands pass through unchanged.
+</Note>
+
+## Installation
+
+### Automatic (Recommended)
+
+The hook installs automatically with:
+
+```bash
+rtk init --global
+```
+
+This creates:
+- `~/.claude/hooks/rtk-rewrite.sh` (executable, with guards)
+- Entry in `~/.claude/settings.json`
+
+See [Claude Code Integration](/integration/claude-code) for full walkthrough.
+
+### Manual Installation
+
+If automatic setup fails:
+
+<Steps>
+  <Step title="Create hook directory">
+    ```bash
+    mkdir -p ~/.claude/hooks
+    ```
+  </Step>
+  
+  <Step title="Copy hook script">
+    ```bash
+    # From RTK source repo:
+    cp .claude/hooks/rtk-rewrite.sh ~/.claude/hooks/rtk-rewrite.sh
+    chmod +x ~/.claude/hooks/rtk-rewrite.sh
+    ```
+  </Step>
+  
+  <Step title="Edit settings.json">
+    Add to `~/.claude/settings.json`:
+    
+    ```json
+    {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "~/.claude/hooks/rtk-rewrite.sh"
+              }
+            ]
+          }
+        ]
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Restart Claude Code">
+    Close and reopen Claude Code, then test:
+    
+    ```bash
+    git status  # Should show compact output
+    ```
+  </Step>
+</Steps>
+
+### Per-Project Installation
+
+For project-specific hooks, create `.claude/hooks/rtk-rewrite.sh` in your project root and reference it in `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.claude/hooks/rtk-rewrite.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## Hook Debugging
+
+### Enable Audit Logging
+
+Track every hook invocation:
+
+```bash
+export RTK_HOOK_AUDIT=1
+```
+
+Logs are written to `~/.local/share/rtk/hook-audit.log`:
+
+```
+2026-03-05T14:23:45Z | rewrite | git status | rtk git status
+2026-03-05T14:24:10Z | skip:already_rtk | rtk cargo test | -
+2026-03-05T14:24:35Z | skip:no_match | echo hello | -
+```
+
+Columns:
+1. Timestamp (UTC)
+2. Action (`rewrite`, `skip:*`)
+3. Original command
+4. Rewritten command (or `-` if skipped)
+
+### Custom Audit Directory
+
+```bash
+export RTK_AUDIT_DIR="/tmp/rtk-audit"
+```
+
+### Verify Hook Execution
+
+Check if the hook is being invoked:
+
+```bash
+# In Claude Code conversation:
+git status
+
+# Then check audit log:
+tail -1 ~/.local/share/rtk/hook-audit.log
+```
+
+Expected:
+```
+2026-03-05T14:30:00Z | rewrite | git status | rtk git status
+```
+
+### Verify Hook Permissions
+
+```bash
+ls -l ~/.claude/hooks/rtk-rewrite.sh
+```
+
+Should show `-rwxr-xr-x` (executable).
+
+If not executable:
+```bash
+chmod +x ~/.claude/hooks/rtk-rewrite.sh
+```
+
+### Test Hook Manually
+
+Run the hook script directly:
+
+```bash
+echo '{"tool_input": {"command": "git status"}}' | ~/.claude/hooks/rtk-rewrite.sh
+```
+
+Expected output:
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "allow",
+    "updatedInput": {
+      "command": "rtk git status"
+    }
+  }
+}
+```
+
+## Alternative: Suggest Hook
+
+If you prefer Claude Code to **suggest** rtk usage rather than automatically rewriting, use the **suggest hook** pattern.
+
+### Auto-Rewrite vs Suggest
+
+| Aspect | Auto-Rewrite Hook | Suggest Hook |
+|--------|-------------------|-------------|
+| **Strategy** | Modifies command before execution | Emits system reminder when rtk-compatible command detected |
+| **Effect** | Claude never sees original command | Claude receives hint to use rtk |
+| **Adoption** | 100% (forced) | ~70-85% (depends on adherence) |
+| **Use Case** | Production, guaranteed savings | Learning mode, auditing |
+| **Overhead** | Zero (transparent) | Minimal (reminder in context) |
+
+### When to Use Suggest
+
+- You want to audit which commands Claude chooses to run
+- You're learning rtk patterns and want visibility
+- You prefer explicit decisions over transparent rewrites
+- You want to preserve exact command execution for debugging
+
+### Suggest Hook Setup
+
+<Steps>
+  <Step title="Create suggest hook">
+    ```bash
+    mkdir -p ~/.claude/hooks
+    cp .claude/hooks/rtk-suggest.sh ~/.claude/hooks/rtk-suggest.sh
+    chmod +x ~/.claude/hooks/rtk-suggest.sh
+    ```
+  </Step>
+  
+  <Step title="Register in settings.json">
+    ```json
+    {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "~/.claude/hooks/rtk-suggest.sh"
+              }
+            ]
+          }
+        ]
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Restart Claude Code">
+    Test with any rtk-compatible command. Claude will receive a system reminder but execute the original command.
+  </Step>
+</Steps>
+
+The suggest hook outputs `systemMessage` instead of `updatedInput`, informing Claude that an rtk alternative exists without modifying the command.
+
+## Troubleshooting
+
+### Hook Not Rewriting Commands
+
+**Symptom**: Commands show raw output after hook installation.
+
+**Checks**:
+
+1. Verify hook is registered:
+   ```bash
+   cat ~/.claude/settings.json | grep rtk-rewrite
+   ```
+
+2. Verify hook is executable:
+   ```bash
+   test -x ~/.claude/hooks/rtk-rewrite.sh && echo "Executable" || echo "Not executable"
+   ```
+
+3. Check dependencies:
+   ```bash
+   command -v rtk && command -v jq
+   ```
+
+4. Enable audit logging:
+   ```bash
+   export RTK_HOOK_AUDIT=1
+   ```
+   Then run a command and check logs.
+
+### Hook Crashes
+
+**Symptom**: Claude Code shows "Hook execution failed" error.
+
+**Common causes**:
+
+- `set -euo pipefail` runs before guards → Move guards to top of script
+- Missing `jq` dependency → Install: `brew install jq` / `apt install jq`
+- Invalid JSON output → Test hook manually with `echo '{...}' | hook.sh`
+
+### Hook Ignores Certain Commands
+
+**Symptom**: Some commands rewrite, others don't.
+
+**Cause**: Pattern doesn't match command syntax.
+
+**Example**: `npm run test` vs `npm test`
+
+Check the hook script patterns at `~/.claude/hooks/rtk-rewrite.sh` around line 130-140 for npm handling.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="sliders" href="/integration/configuration">
+    Customize RTK behavior and settings
+  </Card>
+  <Card title="Claude Code Setup" icon="robot" href="/integration/claude-code">
+    Full installation walkthrough
+  </Card>
+</CardGroup>

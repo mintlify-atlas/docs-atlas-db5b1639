@@ -1,0 +1,260 @@
+---
+title: 'rtk git'
+description: 'Compact git operations with intelligent filtering'
+---
+
+## Overview
+
+Proxy for git commands with token-optimized output. Supports all git flags and subcommands with specialized filtering for common operations.
+
+## Syntax
+
+```bash
+rtk git [GLOBAL_OPTIONS] <SUBCOMMAND> [ARGS...]
+```
+
+## Global Options
+
+All git global options are supported and passed through correctly:
+
+<ParamField query="-C <path>" type="string" repeatable>
+  Run as if git was started in `<path>` (can be repeated)
+</ParamField>
+
+<ParamField query="-c <key>=<value>" type="string" repeatable>
+  Override git config for this command
+</ParamField>
+
+<ParamField query="--git-dir <path>" type="string">
+  Set path to `.git` directory
+</ParamField>
+
+<ParamField query="--work-tree <path>" type="string">
+  Set path to working tree
+</ParamField>
+
+<ParamField query="--no-pager" type="flag">
+  Disable pager output
+</ParamField>
+
+<ParamField query="--no-optional-locks" type="flag">
+  Skip optional locks
+</ParamField>
+
+<ParamField query="--bare" type="flag">
+  Treat repository as bare
+</ParamField>
+
+## Optimized Subcommands
+
+### rtk git status
+
+Compact status with grouped changes.
+
+```bash
+rtk git status [FLAGS]
+```
+
+**Output:**
+```
+📌 main...origin/main
+✅ Staged: 2 files
+   src/main.rs
+   src/lib.rs
+📝 Modified: 1 files
+   Cargo.toml
+❓ Untracked: 3 files
+   temp.txt
+   debug.log
+   ... +1 more
+```
+
+**Token savings: 70%**
+
+### rtk git log
+
+One-line commit history with auto-truncation.
+
+```bash
+rtk git log [FLAGS]
+```
+
+**Default flags applied:**
+- `--pretty=format:%h %s (%ar) <%an>` (if not specified)
+- `-10` (if no limit specified)
+- `--no-merges` (unless `--merges` requested)
+
+**Output:**
+```
+abc1234 Add feature (2 days ago) <author>
+def5678 Fix bug (1 week ago) <other>
+```
+
+**Token savings: 60%**
+
+### rtk git diff
+
+Stat summary + compacted diff.
+
+```bash
+rtk git diff [FLAGS]
+```
+
+**Output:**
+```
+src/main.rs | 10 ++++------
+1 file changed, 4 insertions(+), 6 deletions(-)
+
+--- Changes ---
+📄 src/main.rs
+  @@ -42,3 +42,4 @@ fn main() {
+  +    println!("new line");
+  +5 -6
+```
+
+**Flags:**
+- `--stat` - Show only stat (no diff)
+- `--no-compact` - Disable RTK compacting
+
+**Token savings: 80%**
+
+### rtk git show
+
+Commit summary + stat + compacted diff.
+
+```bash
+rtk git show [COMMIT] [FLAGS]
+```
+
+**Output:**
+```
+abc1234 Add feature (2 days ago) <author>
+src/main.rs | 5 +++--
+
+📄 src/main.rs
+  @@ -10,2 +10,3 @@
+  +    new_code();
+```
+
+**Special cases:**
+- `git show rev:path` - Shows blob content (no diff formatting)
+- `--stat` - Shows only stat
+- `--pretty=...` - Custom format (no RTK filtering)
+
+**Token savings: 80%**
+
+### rtk git add/commit/push/pull
+
+Ultra-compact confirmations.
+
+```bash
+rtk git add [FILES...]
+rtk git commit -m "message"
+rtk git push [REMOTE] [BRANCH]
+rtk git pull [REMOTE] [BRANCH]
+```
+
+**Outputs:**
+```
+ok ✓ 3 files changed, 10 insertions(+), 2 deletions(-)
+ok ✓ abc1234
+ok ✓ origin/main
+ok ✓ 5 files +20 -10
+```
+
+**Token savings: 59%**
+
+### rtk git branch
+
+Compact branch list with remote-only section.
+
+```bash
+rtk git branch [FLAGS]
+```
+
+**Output:**
+```
+* main
+  develop
+  feature/auth
+  remote-only (2):
+    release/v2
+    hotfix/bug
+```
+
+**Token savings: 65%**
+
+### rtk git fetch/stash/worktree
+
+```bash
+rtk git fetch [REMOTE]
+rtk git stash [list|show|pop|apply|drop|push]
+rtk git worktree [list|add|remove]
+```
+
+All operations have compact output formats with essential info preserved.
+
+## Passthrough Support
+
+Any git subcommand not listed above is passed through unchanged:
+
+```bash
+rtk git tag --list      # Full output
+rtk git remote -v       # Full output
+rtk git bisect start    # Full output
+```
+
+**Savings: 0%** (raw git output, but usage tracked)
+
+## Token Savings Summary
+
+| Command | Savings |
+|---------|--------|
+| `status` | 70% |
+| `log` | 60% |
+| `diff` | 80% |
+| `show` | 80% |
+| `add/commit/push/pull` | 59% |
+| `branch` | 65% |
+| `fetch/stash/worktree` | 60-70% |
+
+<CodeGroup>
+```bash Example: Compact status
+rtk git status
+# 📌 main...origin/main
+# ✅ Staged: 2 files
+```
+
+```bash Example: Short log
+rtk git log -5
+# Last 5 commits in one-line format
+```
+
+```bash Example: Diff with stat
+rtk git diff --stat
+# Only file stats, no diff
+```
+
+```bash Example: Global flags
+rtk git -C /path/to/repo status
+# Run in different directory
+```
+
+```bash Example: Passthrough
+rtk git tag -a v1.0 -m "Release"
+# Full git behavior for unoptimized commands
+```
+</CodeGroup>
+
+## Exit Codes
+
+All git exit codes are preserved:
+- `0` - Success
+- `1` - Generic error
+- `128+N` - Fatal error
+
+## Related Commands
+
+- `rtk gh` - GitHub CLI operations
+- `rtk diff` - Universal diff command
+- `rtk log` - Log file filtering

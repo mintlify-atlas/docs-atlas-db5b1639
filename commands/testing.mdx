@@ -1,0 +1,437 @@
+---
+title: "Testing Commands"
+description: "Show only test failures with 90% token savings across all test runners"
+---
+
+## Overview
+
+RTK provides token-optimized test runners for multiple ecosystems. All test commands achieve **90%+ token savings** by showing **only failures** while preserving:
+
+- Exit codes for CI/CD
+- Failure details (stack traces, assertions)
+- Test counts and duration
+- Full output via tee recovery
+
+## Supported Test Runners
+
+<CardGroup cols={2}>
+  <Card title="Cargo" icon="rust">
+    `rtk cargo test` - Rust tests via cargo
+  </Card>
+  <Card title="Vitest" icon="js">
+    `rtk vitest` - JavaScript/TypeScript via Vitest
+  </Card>
+  <Card title="Pytest" icon="python">
+    `rtk pytest` - Python tests via pytest
+  </Card>
+  <Card title="Go" icon="golang">
+    `rtk go test` - Go tests with NDJSON streaming
+  </Card>
+</CardGroup>
+
+## rtk test (Generic)
+
+Generic test runner wrapper that filters any test command.
+
+### Usage
+
+```bash
+rtk test <command>
+```
+
+### Examples
+
+<CodeGroup>
+```bash Standard cargo test
+$ cargo test
+running 15 tests
+test utils::test_parse ... ok
+test utils::test_format ... ok
+test git::test_status ... ok
+test git::test_log ... ok
+test grep::test_search ... ok
+test ls::test_tree ... ok
+test read::test_filter ... ok
+test runner::test_err ... ok
+test runner::test_test ... ok
+test tracking::test_db ... ok
+test filter::test_rust ... FAILED
+test filter::test_python ... FAILED
+test json::test_parse ... ok
+test config::test_load ... ok
+test init::test_setup ... ok
+
+failures:
+
+---- filter::test_rust stdout ----
+thread 'filter::test_rust' panicked at 'assertion failed: `(left == right)`
+  left: `42`,
+ right: `43`', src/filter.rs:142:5
+
+---- filter::test_python stdout ----
+thread 'filter::test_python' panicked at 'assertion failed: expected Python filter to strip docstrings', src/filter.rs:178:5
+
+failures:
+    filter::test_rust
+    filter::test_python
+
+test result: FAILED. 13 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out
+# 40+ lines, ~2500 tokens
+```
+
+```bash RTK cargo test
+$ rtk test cargo test
+✗ FAILED: 2/15 tests
+
+filter::test_rust (src/filter.rs:142)
+  assertion failed: `(left == right)`
+  left: `42`, right: `43`
+
+filter::test_python (src/filter.rs:178)
+  assertion failed: expected Python filter to strip docstrings
+
+[full output: ~/.local/share/rtk/tee/1707753600_cargo_test.log]
+# 10 lines, ~250 tokens (90% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **Failures only**: Skips passing tests
+- **Stack traces**: Preserves failure details
+- **Counts**: Shows passed/failed/skipped
+- **Tee recovery**: Full output saved to file
+
+### Implementation
+
+From `src/runner.rs:run_test()`:
+
+- Executes command via shell
+- Parses stdout/stderr for test results
+- Filters out passing tests
+- Preserves exit codes
+
+## rtk cargo test
+
+Rust test runner via cargo.
+
+### Usage
+
+```bash
+rtk cargo test [options] [testname] [-- test-options]
+```
+
+### Options
+
+- `--lib`: Test library only
+- `--bins`: Test binaries
+- `--tests`: Test integration tests
+- `--doc`: Test documentation
+- `--all-features`: Enable all features
+- `--no-fail-fast`: Don't stop on first failure
+
+### Examples
+
+```bash
+rtk cargo test              # All tests
+rtk cargo test test_parse   # Specific test
+rtk cargo test --lib        # Library tests only
+rtk cargo test -- --nocapture  # Show stdout
+```
+
+### Token Savings
+
+| Tests | Standard | RTK | Savings |
+|-------|----------|-----|----------|
+| 10 passing | 1,000 | 50 | **-95%** |
+| 8 pass, 2 fail | 2,500 | 250 | **-90%** |
+
+## rtk vitest
+
+JavaScript/TypeScript test runner via Vitest.
+
+### Usage
+
+```bash
+rtk vitest [command] [options]
+```
+
+### Commands
+
+- `run`: Run tests once (default)
+- `watch`: Watch mode (passthrough)
+- `dev`: Dev mode (passthrough)
+
+### Examples
+
+<CodeGroup>
+```bash Standard vitest
+$ vitest run
+
+ RUN  v0.34.0 /path/to/project
+
+ ✓ src/utils.test.ts (5)
+ ✓ src/components/Button.test.tsx (8)
+ ✗ src/hooks/useData.test.ts (3)
+ ✗ src/api/client.test.ts (2)
+
+ Test Files  4 failed | 2 passed (6)
+      Tests  5 failed | 13 passed (18)
+   Start at  10:00:00
+   Duration  1.23s
+
+ FAIL  src/hooks/useData.test.ts > fetches data
+AssertionError: expected { status: 404 } to equal { status: 200 }
+...
+# 60+ lines, ~3000 tokens
+```
+
+```bash RTK vitest
+$ rtk vitest run
+✗ 5 failed, 13 passed (18 tests, 1.23s)
+
+src/hooks/useData.test.ts
+  ✗ fetches data
+    AssertionError: expected { status: 404 } to equal { status: 200 }
+
+src/api/client.test.ts
+  ✗ handles timeout
+    Error: Timeout exceeded
+...
+
+[full output: ~/.local/share/rtk/tee/1707753600_vitest.log]
+# 12 lines, ~300 tokens (90% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **JSON parsing**: Parses `--reporter=json` output
+- **ANSI stripping**: Removes color codes
+- **Package manager detection**: Auto-detects pnpm/npm/yarn
+- **Tee recovery**: Saves full output on failure
+
+### Implementation
+
+From `src/vitest_cmd.rs:VitestParser`:
+
+- Forces `--reporter=json` for structured output
+- Parses JSON line-by-line (handles pnpm prefixes)
+- Extracts failures with stack traces
+- Falls back to regex if JSON parsing fails
+
+## rtk pytest
+
+Python test runner via pytest.
+
+### Usage
+
+```bash
+rtk pytest [options] [file::test]
+```
+
+### Options
+
+- `-v`: Verbose (passthrough)
+- `-k <pattern>`: Run tests matching pattern
+- `-x`: Stop on first failure
+- `--tb=short`: Short traceback (default)
+
+### Examples
+
+<CodeGroup>
+```bash Standard pytest
+$ pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.0, pytest-7.4.0, pluggy-1.0.0
+rootdir: /path/to/project
+collected 12 items
+
+tests/test_utils.py ........                                             [ 66%]
+tests/test_api.py .F.                                                    [100%]
+
+=================================== FAILURES ===================================
+________________________________ test_fetch_data _______________________________
+
+    def test_fetch_data():
+>       assert response.status_code == 200
+E       AssertionError: assert 404 == 200
+
+tests/test_api.py:42: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_api.py::test_fetch_data - AssertionError: assert 404 == 200
+========================= 1 failed, 11 passed in 1.23s =========================
+# 25+ lines, ~800 tokens
+```
+
+```bash RTK pytest
+$ rtk pytest
+✗ 1 failed, 11 passed (1.23s)
+
+tests/test_api.py::test_fetch_data
+  AssertionError: assert 404 == 200
+  at tests/test_api.py:42
+
+[full output: ~/.local/share/rtk/tee/1707753600_pytest.log]
+# 7 lines, ~80 tokens (90% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **State machine parser**: Parses text output (no JSON needed)
+- **Auto-flags**: Forces `--tb=short -q` for compact output
+- **Import errors**: Preserves stderr for import failures
+- **Tee recovery**: Saves full output on failure
+
+### Implementation
+
+From `src/pytest_cmd.rs:filter_pytest_output()`:
+
+- State machine: Header → TestProgress → Failures → Summary
+- Extracts failure sections with traceback
+- Filters out passing tests (`.` dots)
+- Preserves exit codes
+
+## rtk go test
+
+Go test runner with NDJSON streaming.
+
+### Usage
+
+```bash
+rtk go test [packages] [flags]
+```
+
+### Flags
+
+- `-v`: Verbose (passthrough)
+- `-run <regexp>`: Run tests matching pattern
+- `-short`: Run short tests only
+- `-timeout <duration>`: Test timeout
+
+### Examples
+
+<CodeGroup>
+```bash Standard go test
+$ go test ./...
+=== RUN   TestParseConfig
+--- PASS: TestParseConfig (0.00s)
+=== RUN   TestFilterData
+--- PASS: TestFilterData (0.00s)
+=== RUN   TestFetchUser
+--- FAIL: TestFetchUser (0.02s)
+    api_test.go:42: Expected status 200, got 404
+=== RUN   TestValidateInput
+--- PASS: TestValidateInput (0.00s)
+FAIL
+FAIL    github.com/user/project/pkg/api    0.023s
+ok      github.com/user/project/pkg/utils  0.008s
+# 15+ lines, ~600 tokens
+```
+
+```bash RTK go test
+$ rtk go test ./...
+✗ 1 failed, 3 passed (0.02s)
+
+github.com/user/project/pkg/api
+  TestFetchUser
+    api_test.go:42: Expected status 200, got 404
+
+[full output: ~/.local/share/rtk/tee/1707753600_go_test.log]
+# 7 lines, ~60 tokens (90% savings)
+```
+</CodeGroup>
+
+### Features
+
+- **NDJSON parsing**: Parses `-json` output line-by-line
+- **Streaming**: Handles interleaved package events
+- **Build errors**: Captures build failures separately
+- **Tee recovery**: Saves full output on failure
+
+### Implementation
+
+From `src/go_cmd.rs:filter_go_test_json()`:
+
+- Forces `-json` flag for structured output
+- Parses `GoTestEvent` NDJSON structs
+- Groups by package (handles multiple packages)
+- Tracks pass/fail/skip counts per package
+- Preserves exit codes
+
+## Tee Output Recovery
+
+All test commands use **tee recovery** to save full output on failure.
+
+### How It Works
+
+1. Test runs and produces output
+2. RTK filters to failures only
+3. If exit code != 0, saves raw output to `~/.local/share/rtk/tee/`
+4. Prints hint: `[full output: ~/.../1707753600_cargo_test.log]`
+5. LLM reads file instead of re-running test
+
+### Configuration
+
+From `~/.config/rtk/config.toml`:
+
+```toml
+[tee]
+enabled = true          # default: true
+mode = "failures"       # "failures" (default), "always", or "never"
+max_files = 20          # max files to keep (oldest rotated out)
+max_file_size = 1048576 # 1MB per file max
+```
+
+### Environment Overrides
+
+```bash
+RTK_TEE=0 rtk cargo test           # Disable tee
+RTK_TEE_DIR=/tmp/tee rtk pytest    # Custom directory
+```
+
+## CI/CD Integration
+
+All test commands preserve exit codes:
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run tests
+        run: |
+          rtk cargo test --all-features
+          rtk pytest tests/
+          rtk go test ./...
+          rtk vitest run
+```
+
+Tests fail the CI pipeline if any test fails (exit code preserved).
+
+## Token Savings Summary
+
+| Test Runner | Standard Tokens | RTK Tokens | Savings |
+|-------------|----------------|------------|----------|
+| cargo test (15 tests, 2 fail) | 2,500 | 250 | **-90%** |
+| vitest (18 tests, 5 fail) | 3,000 | 300 | **-90%** |
+| pytest (12 tests, 1 fail) | 800 | 80 | **-90%** |
+| go test (10 tests, 1 fail) | 600 | 60 | **-90%** |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="JavaScript" icon="js" href="/commands/javascript">
+    Modern JS/TS stack tools
+  </Card>
+  <Card title="Python" icon="python" href="/commands/python">
+    Python development tools
+  </Card>
+</CardGroup>

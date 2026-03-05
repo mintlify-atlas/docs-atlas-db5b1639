@@ -1,0 +1,204 @@
+---
+title: Contributing to RTK
+description: How to contribute to the Rust Token Killer project
+---
+
+Welcome to the RTK contributor guide! We appreciate your interest in improving RTK. This guide will help you get started.
+
+## Code of Conduct
+
+RTK follows standard open-source collaboration practices:
+
+- **Be respectful**: Treat all contributors with respect and professionalism
+- **Be constructive**: Provide helpful feedback and suggestions
+- **Be patient**: Everyone learns at different paces
+- **Focus on facts**: Technical discussions should be objective and evidence-based
+
+## Development Workflow
+
+<Steps>
+  <Step title="Fork and clone">
+    Fork the RTK repository on GitHub and clone your fork locally:
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/rtk.git
+    cd rtk
+    ```
+  </Step>
+
+  <Step title="Create a feature branch">
+    Create a new branch for your changes:
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
+  </Step>
+
+  <Step title="Make your changes">
+    Implement your feature or fix, following the [Architecture](/contributing/architecture) and [Testing](/contributing/testing) guidelines.
+  </Step>
+
+  <Step title="Run quality gates">
+    Before committing, run the full quality check pipeline:
+    ```bash
+    cargo fmt --all && cargo clippy --all-targets && cargo test
+    ```
+    All three checks must pass without warnings.
+  </Step>
+
+  <Step title="Commit your changes">
+    Write clear, descriptive commit messages:
+    ```bash
+    git add .
+    git commit -m "feat: add support for new command"
+    ```
+  </Step>
+
+  <Step title="Push and create PR">
+    Push your branch and create a pull request on GitHub:
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+  </Step>
+</Steps>
+
+## Quality Gates
+
+Every commit to RTK must pass three mandatory checks:
+
+### 1. Formatting
+
+```bash
+cargo fmt --all --check
+```
+
+Ensures consistent code style across the project. Run `cargo fmt --all` to auto-fix formatting issues.
+
+### 2. Linting
+
+```bash
+cargo clippy --all-targets
+```
+
+**Zero tolerance for clippy warnings.** Fix all warnings before committing. Clippy catches:
+- Common mistakes and anti-patterns
+- Performance issues
+- Code complexity problems
+- Unsafe patterns
+
+### 3. Testing
+
+```bash
+cargo test
+```
+
+All existing tests must pass. New features require new tests (see [Testing Guide](/contributing/testing)).
+
+<Note>
+  **Pre-commit hook**: RTK includes a pre-commit hook that automatically enforces these checks. If the hook fails, fix the issues before committing.
+</Note>
+
+## Pull Request Process
+
+### Before Submitting
+
+- [ ] All quality gates pass (fmt, clippy, test)
+- [ ] New features have tests (60-90% token savings verified)
+- [ ] Documentation updated (README.md, CHANGELOG.md)
+- [ ] Manual testing completed (see [Testing Policy](/contributing/testing#manual-testing))
+- [ ] Commit messages are clear and descriptive
+
+### PR Description Template
+
+Provide a clear description of your changes:
+
+```markdown
+## Summary
+Brief description of what this PR does
+
+## Changes
+- Bullet point list of specific changes
+- Include file names for major modifications
+
+## Testing
+- How you tested the changes
+- Example commands and expected output
+
+## Token Savings
+- For filter changes: Include before/after token counts
+- Verify ≥60% savings for new filters
+
+## Checklist
+- [ ] Quality gates pass
+- [ ] Tests added/updated
+- [ ] Documentation updated
+- [ ] Manual testing completed
+```
+
+### Review Process
+
+<Steps>
+  <Step title="Automated checks">
+    GitHub Actions runs security checks, builds, and tests on multiple platforms (macOS, Linux, Windows).
+  </Step>
+
+  <Step title="Security review">
+    For PRs modifying critical files (runner.rs, tracking.rs, etc.), maintainers perform enhanced security review. See [Security Guidelines](/contributing/security).
+  </Step>
+
+  <Step title="Code review">
+    Maintainers review your code for:
+    - Correctness and functionality
+    - Code quality and maintainability
+    - Performance impact (&lt;10ms startup time requirement)
+    - Security considerations
+  </Step>
+
+  <Step title="Approval and merge">
+    Once approved, maintainers will merge your PR. High-risk PRs require approval from 2 maintainers.
+  </Step>
+</Steps>
+
+<Warning>
+  **Performance regressions are release blockers.** If your change affects startup time or memory usage, include benchmark results in your PR description.
+</Warning>
+
+## Types of Contributions
+
+### Bug Fixes
+
+- Identify the bug with a minimal reproduction case
+- Write a failing test that demonstrates the bug
+- Fix the bug
+- Verify the test now passes
+- Update CHANGELOG.md
+
+### New Commands/Filters
+
+See the [Adding Commands Guide](/contributing/adding-commands) for detailed instructions on implementing new filters.
+
+### Documentation
+
+- Improve clarity and accuracy
+- Add examples and use cases
+- Fix typos and formatting
+- Keep documentation in sync with code
+
+### Performance Improvements
+
+- Benchmark before and after using `hyperfine`
+- Document performance gains in PR description
+- Ensure no regression in token savings
+
+## Getting Help
+
+- **Questions**: Open a [GitHub Discussion](https://github.com/rtk-ai/rtk/discussions)
+- **Bugs**: Open a [GitHub Issue](https://github.com/rtk-ai/rtk/issues)
+- **Security**: See [Security Policy](/contributing/security)
+
+## Recognition
+
+All contributors are recognized in:
+- GitHub contributors page
+- CHANGELOG.md (for significant contributions)
+- Project README (for major features)
+
+Thank you for contributing to RTK!

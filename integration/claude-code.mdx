@@ -1,0 +1,404 @@
+---
+title: "Claude Code Integration"
+description: "Integrate RTK with Claude Code for automatic token optimization"
+icon: "robot"
+---
+
+## Overview
+
+RTK integrates with [Claude Code](https://claude.ai/code) to automatically optimize command outputs, reducing token consumption by 60-90% across all your coding sessions. The integration uses a **PreToolUse hook** that transparently rewrites commands before execution.
+
+<Note>
+**What's a hook?** Claude Code hooks are scripts that run before/after tool execution. RTK's hook intercepts Bash commands (like `git status`) and rewrites them to `rtk git status` before the shell sees them. This is completely transparent to Claude.
+</Note>
+
+## Why Hooks > CLAUDE.md Instructions
+
+There are two ways to tell Claude Code about RTK:
+
+| Approach | Adoption Rate | Context Overhead | Works with Subagents |
+|----------|--------------|------------------|---------------------|
+| **CLAUDE.md instructions** | ~60-70% | 2000 tokens | ❌ Often ignored |
+| **PreToolUse hook** | 100% | 10 tokens | ✅ Always active |
+
+The hook-first approach is superior because:
+
+- **Guaranteed execution**: Commands are rewritten automatically, regardless of whether Claude follows instructions
+- **Minimal context**: Only 10 lines in `RTK.md` vs 137 lines of instruction boilerplate
+- **Subagent-proof**: Works in nested conversations where CLAUDE.md may be ignored
+- **Zero friction**: Claude never needs to "remember" to use rtk
+
+<Steps>
+  <Step title="Hook-first mode (recommended)">
+    ```bash
+    rtk init --global
+    ```
+    
+    Installs:
+    - Hook script at `~/.claude/hooks/rtk-rewrite.sh`
+    - Slim awareness doc at `~/.claude/RTK.md` (10 lines)
+    - Reference `@RTK.md` in `~/.claude/CLAUDE.md`
+    - Registration in `~/.claude/settings.json`
+  </Step>
+  
+  <Step title="Legacy mode (compatibility)">
+    ```bash
+    rtk init --global --claude-md
+    ```
+    
+    Injects 137-line instruction block into `~/.claude/CLAUDE.md`. No hook, Claude must follow instructions manually.
+  </Step>
+</Steps>
+
+## Installation Walkthrough
+
+### Step 1: Check Prerequisites
+
+Verify RTK is installed:
+
+```bash
+rtk --version  # Should show "rtk 0.23.0" or newer
+rtk gain       # Should show token savings stats
+```
+
+<Warning>
+**Name collision**: There are two different "rtk" packages. If `rtk gain` doesn't work, you installed the wrong one (Rust Type Kit instead of Rust Token Killer). See [Installation Guide](/installation).
+</Warning>
+
+### Step 2: Run Global Init
+
+The default mode installs the hook and minimal context:
+
+```bash
+rtk init --global
+```
+
+This will:
+
+1. ✅ Create `~/.claude/hooks/rtk-rewrite.sh` (executable)
+2. ✅ Create `~/.claude/RTK.md` (10 lines, meta command reference)
+3. ✅ Add `@RTK.md` to `~/.claude/CLAUDE.md` (or create if missing)
+4. ⚙️ **Prompt**: "Patch existing settings.json? [y/N]"
+
+### Step 3: Settings.json Patching
+
+Claude Code needs to know the hook exists. RTK can patch `~/.claude/settings.json` automatically:
+
+<CodeGroup>
+```bash Interactive (default)
+rtk init --global
+# Prompts: Patch settings.json? [y/N]
+# Type 'y' to approve
+```
+
+```bash Automatic (CI/CD)
+rtk init --global --auto-patch
+# Patches immediately without prompting
+```
+
+```bash Manual
+rtk init --global --no-patch
+# Prints JSON snippet for manual setup
+```
+</CodeGroup>
+
+**What gets added to settings.json:**
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/rtk-rewrite.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+RTK creates a backup at `~/.claude/settings.json.bak` before making changes.
+
+### Step 4: Restart Claude Code
+
+**Critical**: The hook only activates after a restart.
+
+1. Close Claude Code completely
+2. Reopen Claude Code
+3. Test in any conversation:
+
+```bash
+git status
+```
+
+You should see ultra-compact output instead of the raw git output. The command was transparently rewritten to `rtk git status`.
+
+### Step 5: Verify Installation
+
+Check the hook is active:
+
+```bash
+rtk init --show
+```
+
+Expected output:
+
+```
+📋 rtk Configuration:
+
+✅ Hook: ~/.claude/hooks/rtk-rewrite.sh (executable, with guards)
+✅ RTK.md: ~/.claude/RTK.md (slim mode)
+✅ Integrity: hook hash verified
+✅ Global (~/.claude/CLAUDE.md): @RTK.md reference
+✅ settings.json: RTK hook configured
+```
+
+## Installation Modes Comparison
+
+<Note>
+All modes support both **global** (`--global`) and **local** (no flag) scope. Global applies to all Claude Code sessions, local applies to the current project only.
+</Note>
+
+| Command | Scope | Hook | RTK.md | CLAUDE.md | Tokens in Context | Use Case |
+|---------|-------|------|--------|-----------|-------------------|----------|
+| `rtk init -g` | Global | ✅ | ✅ (10 lines) | @RTK.md | ~10 | **Recommended**: All projects |
+| `rtk init -g --claude-md` | Global | ❌ | ❌ | Full (137 lines) | ~2000 | Legacy compatibility |
+| `rtk init -g --hook-only` | Global | ✅ | ❌ | Nothing | 0 | Hook only, no docs |
+| `rtk init` | Local | ❌ | ❌ | Full (137 lines) | ~2000 | Single project |
+
+### Hook-first Mode (Default)
+
+```bash
+rtk init --global
+```
+
+- ✅ 100% command adoption
+- ✅ 10 tokens in context
+- ✅ Works with all subagents
+- ⚠️ Requires Unix (macOS/Linux)
+
+### Legacy Mode
+
+```bash
+rtk init --global --claude-md
+```
+
+- ⚠️ 60-70% adoption (depends on Claude following instructions)
+- ⚠️ 2000 tokens in context
+- ❌ Subagents may ignore instructions
+- ✅ Works on Windows
+
+### Hook-only Mode
+
+```bash
+rtk init --global --hook-only
+```
+
+- ✅ Zero context footprint
+- ⚠️ Claude won't know about meta commands (`rtk gain`, `rtk discover`, `rtk proxy`)
+- Use case: Minimal setup, hook-only automation
+
+### Local Project Mode
+
+```bash
+rtk init  # No --global flag
+```
+
+Injects full instructions into `./CLAUDE.md` (current directory). No hook, no global config. Use for single-project setup or when you don't have write access to `~/.claude/`.
+
+## Restart Required
+
+<Warning>
+Claude Code **must be restarted** after installation for the hook to activate. Without a restart, commands will not be rewritten.
+</Warning>
+
+How to verify:
+
+1. Close Claude Code completely (quit the application)
+2. Reopen Claude Code
+3. Open any conversation
+4. Type: `git status`
+5. Inspect output — should be ultra-compact (3-5 lines, not 20+ lines)
+
+## Verification Steps
+
+### 1. Check Hook Status
+
+```bash
+rtk init --show
+```
+
+Look for:
+- ✅ Hook exists and is executable
+- ✅ RTK.md present (slim mode)
+- ✅ settings.json configured
+
+### 2. Test Command Rewriting
+
+In a Claude Code conversation, type:
+
+```bash
+git status
+```
+
+**Expected**: Compact output like:
+```
+3 modified, 1 untracked ✓
+  M src/main.rs
+  M Cargo.toml
+  ?? new_file.txt
+```
+
+**Unexpected** (hook not working): Full git output with 20+ lines.
+
+### 3. Check Token Savings
+
+After a session, verify tracking:
+
+```bash
+rtk gain
+```
+
+Should show commands like `rtk git status`, `rtk cargo test`, etc. with token savings percentages.
+
+### 4. Audit Hook Activity (Optional)
+
+Enable audit logging to see every rewrite:
+
+```bash
+export RTK_HOOK_AUDIT=1
+rtk init --show  # or any Claude Code command
+```
+
+Check logs:
+
+```bash
+cat ~/.local/share/rtk/hook-audit.log
+```
+
+Format: `timestamp | action | original | rewritten`
+
+Example:
+```
+2026-03-05T14:23:45Z | rewrite | git status | rtk git status
+2026-03-05T14:24:10Z | skip:already_rtk | rtk cargo test | -
+```
+
+## Troubleshooting
+
+### Hook Not Working
+
+**Symptom**: Commands still show raw output after restart.
+
+**Checks**:
+
+1. Verify hook is registered:
+   ```bash
+   cat ~/.claude/settings.json | grep rtk-rewrite
+   ```
+   Should show the hook path.
+
+2. Verify hook is executable:
+   ```bash
+   ls -l ~/.claude/hooks/rtk-rewrite.sh
+   ```
+   Should show `-rwxr-xr-x` (executable).
+
+3. Verify dependencies:
+   ```bash
+   command -v rtk && command -v jq
+   ```
+   Both must be available.
+
+4. Re-run setup:
+   ```bash
+   rtk init --global --auto-patch
+   ```
+
+### Settings.json Patching Failed
+
+**Symptom**: `rtk init --global` reports error during settings.json patch.
+
+**Solutions**:
+
+1. Check if settings.json is valid JSON:
+   ```bash
+   cat ~/.claude/settings.json | python3 -m json.tool
+   ```
+
+2. Restore from backup:
+   ```bash
+   cp ~/.claude/settings.json.bak ~/.claude/settings.json
+   ```
+
+3. Use manual patching:
+   ```bash
+   rtk init --global --no-patch
+   # Follow printed instructions
+   ```
+
+### Windows Users
+
+**Symptom**: Hook installation fails on Windows.
+
+**Solution**: Use legacy mode instead:
+
+```bash
+rtk init --global --claude-md
+```
+
+Hooks require Unix (macOS/Linux). Windows users should use WSL or legacy CLAUDE.md injection.
+
+## Migration from Legacy Mode
+
+If you previously used `rtk init --global --claude-md`, you can migrate to hook-first:
+
+```bash
+rtk init --global
+```
+
+This will:
+- ✅ Install hook and RTK.md
+- ✅ Remove 137-line RTK block from CLAUDE.md
+- ✅ Replace with `@RTK.md` reference (10 lines)
+- ✅ Patch settings.json
+
+The migration is automatic and preserves any custom content in CLAUDE.md.
+
+## Uninstalling
+
+To completely remove RTK integration:
+
+```bash
+rtk init --global --uninstall
+```
+
+Removes:
+- Hook script (`~/.claude/hooks/rtk-rewrite.sh`)
+- RTK.md (`~/.claude/RTK.md`)
+- @RTK.md reference from CLAUDE.md
+- Hook entry from settings.json
+
+**Restart Claude Code** after uninstalling.
+
+To restore from backup if needed:
+
+```bash
+cp ~/.claude/settings.json.bak ~/.claude/settings.json
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Hook Architecture" icon="gear" href="/integration/hooks">
+    Learn how the auto-rewrite hook works
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/integration/configuration">
+    Customize RTK behavior and settings
+  </Card>
+</CardGroup>

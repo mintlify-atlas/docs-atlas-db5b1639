@@ -1,0 +1,626 @@
+---
+title: Adding Commands
+description: Step-by-step guide to implementing new RTK commands and filters
+---
+
+This guide walks through the complete process of adding a new command to RTK, from planning to documentation.
+
+## Filter Development Checklist
+
+From CLAUDE.md (lines 548-605), here's the complete checklist:
+
+### Implementation
+
+- [ ] Create filter module in `src/<cmd>_cmd.rs` (or extend existing)
+- [ ] Add `lazy_static!` regex patterns for parsing (compile once, reuse)
+- [ ] Implement fallback to raw command on error (graceful degradation)
+- [ ] Preserve exit codes (`std::process::exit(code)` if non-zero)
+
+### Testing
+
+- [ ] Write snapshot test with real command output fixture (`tests/fixtures/<cmd>_raw.txt`)
+- [ ] Verify token savings ≥60% with `count_tokens()` assertion
+- [ ] Test cross-platform shell escaping (macOS, Linux, Windows)
+- [ ] Write unit tests for edge cases (empty output, errors, unicode, ANSI codes)
+
+### Integration
+
+- [ ] Register filter in main.rs Commands enum
+- [ ] Update README.md with new command support and token savings %
+- [ ] Update CHANGELOG.md with feature description
+
+### Quality Gates
+
+- [ ] Run `cargo fmt --all && cargo clippy --all-targets && cargo test`
+- [ ] Benchmark startup time with `hyperfine` (verify &lt;10ms)
+- [ ] Test manually: `rtk <cmd>` and inspect output for correctness
+- [ ] Verify fallback: Break filter intentionally, confirm raw command executes
+
+### Documentation
+
+- [ ] Add command to CLAUDE.md Module Responsibilities table
+- [ ] Document token savings % (from tests)
+- [ ] Add usage examples to README.md
+
+## Module Creation Pattern
+
+### Step 1: Create Module File
+
+```bash
+# Create new command module
+touch src/example_cmd.rs
+```
+
+### Step 2: Implement Standard Template
+
+```rust
+// src/example_cmd.rs
+
+use anyhow::{Context, Result};
+use std::process::Command;
+use crate::{tracking, utils};
+
+/// Public entry point called by main.rs router
+pub fn run(args: &[String], verbose: u8) -> Result<()> {
+    // 1. Execute underlying command
+    let raw_output = execute_command(args)?;
+
+    // 2. Apply filtering strategy
+    let filtered = filter_output(&raw_output, verbose);
+
+    // 3. Print result
+    println!("{}", filtered);
+
+    // 4. Track token savings
+    tracking::track(
+        "example",
+        "rtk example",
+        &raw_output,
+        &filtered
+    );
+
+    Ok(())
+}
+
+/// Execute the underlying tool
+fn execute_command(args: &[String]) -> Result<String> {
+    let output = Command::new("example-tool")
+        .args(args)
+        .output()
+        .context("Failed to execute example-tool")?;
+
+    // Preserve exit codes (critical for CI/CD)
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("{}", stderr);
+        std::process::exit(output.status.code().unwrap_or(1));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Apply filtering strategy
+fn filter_output(raw: &str, verbose: u8) -> String {
+    // Show raw output at verbosity level 3
+    if verbose >= 3 {
+        eprintln!("Raw output:\n{}", raw);
+        return raw.to_string();
+    }
+
+    // Apply compression logic here
+    // Choose strategy: stats, grouping, deduplication, etc.
+    let compressed = compress_output(raw);
+
+    compressed
+}
+
+fn compress_output(raw: &str) -> String {
+    // TODO: Implement filtering strategy
+    // See "Filtering Strategies" section below
+    raw.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_filter_output() {
+        let raw = "verbose output here\nline 2\nline 3";
+        let filtered = filter_output(raw, 0);
+        
+        // Verify compression
+        assert!(filtered.len() < raw.len());
+        
+        // Verify token savings ≥60%
+        let savings = 1.0 - (filtered.len() as f64 / raw.len() as f64);
+        assert!(savings >= 0.6, "Expected ≥60% savings, got {:.1}%", savings * 100.0);
+    }
+
+    #[test]
+    fn test_filter_empty_input() {
+        let result = filter_output("", 0);
+        assert_eq!(result, "");
+    }
+}
+```
+
+### Step 3: Register in main.rs
+
+Add the module to `main.rs`:
+
+```rust
+// main.rs
+
+mod example_cmd;
+
+#[derive(Subcommand)]
+enum Commands {
+    // ... existing commands
+    
+    /// Example command description
+    Example {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+}
+
+// In main() function
+match cli.command {
+    // ... existing cases
+    
+    Commands::Example { args } => {
+        example_cmd::run(&args, cli.verbose)?;
+    }
+}
+```
+
+## Implementation Steps
+
+<Steps>
+  <Step title="Choose a filtering strategy">
+    Select the appropriate strategy based on output type:
+    
+    - **Stats Extraction**: Count/aggregate (git status, pnpm list)
+    - **Error Only**: Show stderr only (test failures)
+    - **Grouping by Pattern**: Group by rule/file (lint, tsc)
+    - **Deduplication**: Count repeated lines (logs)
+    - **Structure Only**: Keys without values (JSON)
+    - **Code Filtering**: Strip comments/bodies (read)
+    - **Failure Focus**: Show only failures (vitest, playwright)
+    - **Tree Compression**: Hierarchy view (ls)
+    - **Progress Filtering**: Strip ANSI (wget, pnpm)
+    - **JSON/Text Dual**: JSON when available (ruff, pip)
+    - **State Machine**: Track state transitions (pytest)
+    - **NDJSON Streaming**: Line-by-line JSON (go test)
+    
+    See [Architecture - Filtering Strategies](/contributing/architecture#filtering-strategies) for details.
+  </Step>
+
+  <Step title="Write the test first (TDD)">
+    Create a fixture file with real command output:
+    ```bash
+    # Run the real command and save output
+    example-tool --some-args > tests/fixtures/example_raw.txt
+    ```
+    
+    Write a failing test:
+    ```rust
+    #[test]
+    fn test_filter_example() {
+        let raw = include_str!("../tests/fixtures/example_raw.txt");
+        let filtered = filter_output(raw, 0);
+        
+        assert!(filtered.contains("expected output"));
+        assert!(filtered.len() < raw.len() / 2); // 50%+ reduction
+    }
+    ```
+    
+    Run the test (it should fail):
+    ```bash
+    cargo test test_filter_example
+    ```
+  </Step>
+
+  <Step title="Implement the filter">
+    Implement the filtering logic to pass the test:
+    ```rust
+    use lazy_static::lazy_static;
+    use regex::Regex;
+    
+    lazy_static! {
+        static ref ERROR_PATTERN: Regex = Regex::new(r"ERROR:.*").unwrap();
+    }
+    
+    fn compress_output(raw: &str) -> String {
+        let errors: Vec<_> = ERROR_PATTERN
+            .find_iter(raw)
+            .map(|m| m.as_str())
+            .collect();
+        
+        if errors.is_empty() {
+            return "No errors found ✓".to_string();
+        }
+        
+        format!("Found {} errors:\n{}", errors.len(), errors.join("\n"))
+    }
+    ```
+    
+    Run the test again (it should pass):
+    ```bash
+    cargo test test_filter_example
+    ```
+  </Step>
+
+  <Step title="Add Package Manager Detection (JS/TS only)">
+    For JavaScript/TypeScript tools, add package manager auto-detection:
+    ```rust
+    use std::path::Path;
+    
+    fn execute_command(args: &[String]) -> Result<String> {
+        let is_pnpm = Path::new("pnpm-lock.yaml").exists();
+        let is_yarn = Path::new("yarn.lock").exists();
+        
+        let mut cmd = if is_pnpm {
+            let mut c = Command::new("pnpm");
+            c.arg("exec").arg("--").arg("example-tool");
+            c
+        } else if is_yarn {
+            let mut c = Command::new("yarn");
+            c.arg("exec").arg("--").arg("example-tool");
+            c
+        } else {
+            let mut c = Command::new("npx");
+            c.arg("--no-install").arg("--").arg("example-tool");
+            c
+        };
+        
+        cmd.args(args);
+        let output = cmd.output()
+            .context("Failed to execute example-tool")?;
+        
+        // ... rest of implementation
+    }
+    ```
+  </Step>
+
+  <Step title="Add graceful fallback">
+    Ensure the filter fails gracefully:
+    ```rust
+    fn compress_output(raw: &str) -> String {
+        // Try to parse and filter
+        match parse_and_filter(raw) {
+            Ok(filtered) => filtered,
+            Err(e) => {
+                // Fallback to raw output on error
+                eprintln!("Filter failed: {}, showing raw output", e);
+                raw.to_string()
+            }
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Add edge case tests">
+    Test error conditions:
+    ```rust
+    #[test]
+    fn test_filter_empty() {
+        let result = filter_output("", 0);
+        assert_eq!(result, "No errors found ✓");
+    }
+    
+    #[test]
+    fn test_filter_unicode() {
+        let raw = "ERROR: 🚀 failed";
+        let result = filter_output(raw, 0);
+        assert!(result.contains("🚀"));
+    }
+    
+    #[test]
+    fn test_filter_ansi_codes() {
+        let raw = "\x1b[31mERROR\x1b[0m: failure";
+        let result = filter_output(raw, 0);
+        assert!(result.contains("ERROR"));
+    }
+    ```
+  </Step>
+
+  <Step title="Run quality gates">
+    ```bash
+    # Format code
+    cargo fmt --all
+    
+    # Run linter (fix all warnings)
+    cargo clippy --all-targets
+    
+    # Run all tests
+    cargo test
+    ```
+    
+    All checks must pass before committing.
+  </Step>
+
+  <Step title="Benchmark performance">
+    ```bash
+    # Build release binary
+    cargo build --release
+    
+    # Benchmark startup time
+    hyperfine 'target/release/rtk example' --warmup 3
+    
+    # Verify &lt;10ms overhead
+    ```
+  </Step>
+
+  <Step title="Manual testing">
+    Test with real commands:
+    ```bash
+    # Install locally
+    cargo install --path .
+    
+    # Test the command
+    rtk example --some-args
+    
+    # Verify output is correct and condensed
+    # Compare with raw command:
+    example-tool --some-args
+    ```
+  </Step>
+
+  <Step title="Update documentation">
+    Update multiple files:
+    
+    **README.md**:
+    ```markdown
+    ## Supported Commands
+    
+    - `rtk example` - Example tool filtering (75% savings)
+    ```
+    
+    **CHANGELOG.md**:
+    ```markdown
+    ## [Unreleased]
+    
+    ### Added
+    - `rtk example` command with 75% token savings
+    ```
+    
+    **CLAUDE.md** (Module Responsibilities table):
+    ```markdown
+    | example_cmd.rs | Example tool | Strategy description | 75% reduction |
+    ```
+  </Step>
+</Steps>
+
+## Testing Requirements
+
+### Token Savings Verification
+
+All filters must achieve ≥60% token savings:
+
+```rust
+fn count_tokens(text: &str) -> usize {
+    (text.len() as f64 / 4.0).ceil() as usize
+}
+
+#[test]
+fn test_token_savings() {
+    let raw = include_str!("../tests/fixtures/example_raw.txt");
+    let filtered = filter_output(raw, 0);
+    
+    let input_tokens = count_tokens(raw);
+    let output_tokens = count_tokens(&filtered);
+    let savings_pct = ((input_tokens - output_tokens) as f64 / input_tokens as f64) * 100.0;
+    
+    assert!(savings_pct >= 60.0, 
+            "Expected ≥60% savings, got {:.1}%", savings_pct);
+}
+```
+
+### Exit Code Preservation
+
+Test that exit codes are properly preserved:
+
+```rust
+#[test]
+fn test_exit_code_preservation() {
+    use std::process::Command;
+    
+    // Test failing command
+    let output = Command::new("target/debug/rtk")
+        .args(["example", "--fail"])
+        .output()
+        .expect("Failed to execute rtk");
+    
+    // Should fail with non-zero exit code
+    assert!(!output.status.success());
+    assert!(output.status.code().unwrap_or(0) != 0);
+}
+```
+
+### Fallback Testing
+
+Verify graceful degradation:
+
+```rust
+#[test]
+fn test_fallback_on_parse_error() {
+    let malformed = "unexpected format that breaks parser";
+    let result = filter_output(malformed, 0);
+    
+    // Should return raw output, not crash
+    assert_eq!(result, malformed);
+}
+```
+
+## Example Walkthrough: Adding `rtk mypy`
+
+Let's walk through adding Python type checker support:
+
+### 1. Create fixture
+
+```bash
+# Run mypy and save output
+mypy src/ > tests/fixtures/mypy_raw.txt
+```
+
+**mypy_raw.txt**:
+```
+src/example.py:10: error: Incompatible types in assignment  [assignment]
+src/example.py:15: error: Argument 1 has incompatible type  [arg-type]
+src/utils.py:5: error: Missing return statement  [return]
+src/utils.py:12: error: Argument 1 has incompatible type  [arg-type]
+Found 4 errors in 2 files (checked 10 files)
+```
+
+### 2. Write test
+
+```rust
+// src/mypy_cmd.rs
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_filter_mypy_groups_by_file_and_error() {
+        let raw = include_str!("../tests/fixtures/mypy_raw.txt");
+        let filtered = filter_output(raw, 0);
+        
+        // Should group by file and error code
+        assert!(filtered.contains("src/example.py: 2"));
+        assert!(filtered.contains("src/utils.py: 2"));
+        assert!(filtered.contains("arg-type: 2"));
+        assert!(filtered.contains("assignment: 1"));
+        assert!(filtered.contains("return: 1"));
+        
+        // Verify 80%+ savings
+        let savings = 1.0 - (filtered.len() as f64 / raw.len() as f64);
+        assert!(savings >= 0.8, "Expected ≥80% savings, got {:.1}%", savings * 100.0);
+    }
+}
+```
+
+Run test (fails):
+```bash
+cargo test test_filter_mypy_groups_by_file_and_error
+```
+
+### 3. Implement filter
+
+```rust
+use lazy_static::lazy_static;
+use regex::Regex;
+use std::collections::HashMap;
+
+lazy_static! {
+    static ref MYPY_ERROR: Regex = 
+        Regex::new(r"^(.+?):(\d+): error: (.+?)\s+\[(.+?)\]$").unwrap();
+}
+
+fn compress_output(raw: &str) -> String {
+    let mut file_errors: HashMap<String, usize> = HashMap::new();
+    let mut error_types: HashMap<String, usize> = HashMap::new();
+    
+    for line in raw.lines() {
+        if let Some(caps) = MYPY_ERROR.captures(line) {
+            let file = caps.get(1).unwrap().as_str();
+            let error_code = caps.get(4).unwrap().as_str();
+            
+            *file_errors.entry(file.to_string()).or_insert(0) += 1;
+            *error_types.entry(error_code.to_string()).or_insert(0) += 1;
+        }
+    }
+    
+    if file_errors.is_empty() {
+        return "No mypy errors ✓".to_string();
+    }
+    
+    let mut result = String::new();
+    result.push_str("Errors by file:\n");
+    for (file, count) in file_errors.iter() {
+        result.push_str(&format!("  {}: {}\n", file, count));
+    }
+    
+    result.push_str("\nErrors by type:\n");
+    for (error_type, count) in error_types.iter() {
+        result.push_str(&format!("  {}: {}\n", error_type, count));
+    }
+    
+    result
+}
+```
+
+Run test (passes):
+```bash
+cargo test test_filter_mypy_groups_by_file_and_error
+```
+
+### 4. Complete the module
+
+Add execution and tracking logic (see standard template above).
+
+### 5. Register in main.rs
+
+```rust
+mod mypy_cmd;
+
+enum Commands {
+    // ...
+    
+    /// Python type checker (mypy)
+    Mypy {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+}
+
+match cli.command {
+    // ...
+    
+    Commands::Mypy { args } => {
+        mypy_cmd::run(&args, cli.verbose)?;
+    }
+}
+```
+
+### 6. Test manually
+
+```bash
+cargo install --path .
+rtk mypy src/
+# Verify output is grouped and condensed
+```
+
+### 7. Update docs
+
+Add to README.md, CHANGELOG.md, and CLAUDE.md.
+
+## Common Pitfalls
+
+<Warning>
+  **Don't recompile regex at runtime**
+  
+  ❌ **Wrong**: `let re = Regex::new(r"pattern").unwrap();` inside function
+  
+  ✅ **Right**: Use `lazy_static!` for regex compilation
+</Warning>
+
+<Warning>
+  **Don't panic on filter failure**
+  
+  Always fallback to raw command execution. Log error to stderr, execute original command unchanged.
+</Warning>
+
+<Warning>
+  **Don't skip manual testing**
+  
+  Running only automated tests without executing `rtk <cmd>` and inspecting output is an anti-pattern.
+</Warning>
+
+## Next Steps
+
+- [Testing Guide](/contributing/testing) - TDD workflow and test types
+- [Architecture](/contributing/architecture) - Understand filtering strategies
+- [Security](/contributing/security) - Security review for PR merges

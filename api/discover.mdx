@@ -1,0 +1,278 @@
+---
+title: 'rtk discover'
+description: 'Find missed RTK savings in Claude Code history'
+---
+
+## Overview
+
+Analyzes Claude Code session files (JSONL format) to identify commands that could have used RTK but didn't. Shows estimated token savings and suggests RTK alternatives.
+
+## Syntax
+
+```bash
+rtk discover [OPTIONS]
+```
+
+## Options
+
+<ParamField query="-p, --project <PATH>" type="string" optional>
+  Filter by project path (substring match). If not specified and `--all` is not used, defaults to current working directory.
+</ParamField>
+
+<ParamField query="-a, --all" type="flag">
+  Scan all projects (no filtering by path)
+</ParamField>
+
+<ParamField query="-s, --since <DAYS>" type="number" default="30">
+  Limit scan to sessions from last N days
+</ParamField>
+
+<ParamField query="-l, --limit <COUNT>" type="number" default="15">
+  Max commands per section in text output
+</ParamField>
+
+<ParamField query="-f, --format" type="string" default="text">
+  Output format:
+  - `text` - Human-readable report
+  - `json` - Machine-readable JSON
+</ParamField>
+
+## Session Discovery
+
+RTK scans Claude Code session files:
+- **Location**: `~/.claude/sessions/*.jsonl` (or OS-specific path)
+- **Format**: Newline-delimited JSON (JSONL)
+- **Filtering**: By project path (encoded in session filename)
+
+## Command Classification
+
+### Supported Commands
+
+Commands RTK can optimize, grouped by category:
+
+**Git** (59-80% savings)
+- `git status`, `git log`, `git diff`, `git show`
+- `git add`, `git commit`, `git push`, `git pull`
+- `git branch`, `git fetch`, `git stash`, `git worktree`
+
+**Build** (80-90% savings)
+- `cargo build`, `cargo check`, `cargo clippy`
+- `tsc`, `next build`, `pnpm build`
+
+**Test** (90-99% savings)
+- `cargo test`, `cargo nextest`
+- `vitest run`, `playwright test`
+- `pytest`, `go test`
+
+**Lint** (80-85% savings)
+- `eslint`, `ruff check`, `pylint`, `mypy`
+- `prettier --check`, `cargo clippy`
+
+**Package Managers** (70-90% savings)
+- `pnpm list`, `pnpm outdated`, `pnpm install`
+- `npm run`, `pip list`
+
+**Files & Search** (60-75% savings)
+- `ls`, `grep`, `find`, `cat`/`read`
+
+**Infrastructure** (85% savings)
+- `docker ps`, `docker images`, `docker logs`
+- `kubectl get`, `kubectl logs`
+
+**Network** (65-70% savings)
+- `curl`, `wget`
+
+### Unsupported Commands
+
+Commands not yet supported by RTK (feature requests welcome):
+- Custom scripts
+- Uncommon build tools
+- Database CLIs (non-psql)
+- Vendor-specific tools
+
+### Ignored Commands
+
+Automatically excluded from analysis:
+- Commands already using RTK (`rtk ...`)
+- Text editors (`vim`, `nano`, `code`)
+- Interactive shells (`bash`, `zsh`)
+- CD operations (`cd ...`)
+
+## Output Format
+
+### Text Report
+
+```
+RTK Opportunity Discovery
+════════════════════════════════════════════════════════════
+📊 Scanned 42 sessions from last 30 days
+   Total commands: 1,234
+   Already using RTK: 567 (46%)
+   Parse errors: 3
+
+🎯 Supported Commands (Missed RTK Usage)
+────────────────────────────────────────────────────────────
+Total: 425 commands, ~345K tokens saved
+
+ 1. git status (95x)               → rtk git status
+    Category: Git (70% avg savings)
+    Estimated savings: ~85K tokens
+    Status: ✅ Existing RTK support
+
+ 2. cargo test (42x)               → rtk cargo test
+    Category: Test (90% avg savings)
+    Estimated savings: ~120K tokens
+    Status: ✅ Existing RTK support
+
+ 3. tsc --noEmit (28x)             → rtk tsc --noEmit
+    Category: Build (83% avg savings)
+    Estimated savings: ~65K tokens
+    Status: ✅ Existing RTK support
+
+ ... +12 more commands (showing top 15)
+
+⚠️  Unsupported Commands
+────────────────────────────────────────────────────────────
+Total: 242 commands
+
+ 1. terraform plan (23x)
+    Example: terraform plan -out=tfplan
+
+ 2. ansible-playbook (15x)
+    Example: ansible-playbook deploy.yml -i inventory
+
+ ... +8 more (showing top 10)
+
+💡 Recommendations:
+   • Add 'rtk' prefix to git, cargo, and tsc commands
+   • Install RTK hook for automatic rewriting: rtk init -g
+   • Check RTK.md for full command list
+```
+
+### JSON Format
+
+```json
+{
+  "sessions_scanned": 42,
+  "total_commands": 1234,
+  "already_rtk": 567,
+  "since_days": 30,
+  "parse_errors": 3,
+  "supported": [
+    {
+      "command": "git status",
+      "count": 95,
+      "rtk_equivalent": "rtk git status",
+      "category": "Git",
+      "estimated_savings_tokens": 85000,
+      "estimated_savings_pct": 70.0,
+      "rtk_status": "Existing"
+    }
+  ],
+  "unsupported": [
+    {
+      "base_command": "terraform",
+      "count": 23,
+      "example": "terraform plan -out=tfplan"
+    }
+  ]
+}
+```
+
+## RTK Status Indicators
+
+**✅ Existing** - RTK already supports this command with optimized filter
+
+**🔄 Passthrough** - RTK supports the base command but no specialized filter (0% savings, usage tracked)
+
+**❌ Not Supported** - Command not recognized by RTK (feature request needed)
+
+## Token Estimation
+
+For each command, RTK estimates savings using:
+
+1. **Real output length** (from session `tool_result.content` if available)
+2. **Category averages** (fallback based on command type)
+3. **Historical savings %** (from category benchmarks)
+
+Estimates are heuristic-based and may vary from actual savings.
+
+## Use Cases
+
+### Audit Current Workflow
+```bash
+rtk discover
+# Shows missed opportunities in current project
+```
+
+### Analyze All Projects
+```bash
+rtk discover --all
+# Scan entire Claude Code history
+```
+
+### Recent Sessions Only
+```bash
+rtk discover --since 7
+# Last week's sessions
+```
+
+### Specific Project
+```bash
+rtk discover -p "/Users/dev/myapp"
+# Filter by exact path
+```
+
+### Export for Analysis
+```bash
+rtk discover -f json > opportunities.json
+# Machine-readable export
+```
+
+<CodeGroup>
+```bash Example: Current project
+rtk discover
+# Analyze current working directory
+```
+
+```bash Example: All projects, last week
+rtk discover --all --since 7
+# Recent sessions across all projects
+```
+
+```bash Example: Export to JSON
+rtk discover -f json > report.json
+# Save for programmatic analysis
+```
+
+```bash Example: Show more results
+rtk discover --limit 30
+# Increase commands per section
+```
+</CodeGroup>
+
+## Privacy & Data
+
+RTK `discover` only analyzes:
+- Command names and arguments (from `Bash` tool calls)
+- Output lengths (for token estimation)
+- Session timestamps and project paths
+
+**Not analyzed:**
+- Message content (user/assistant text)
+- File contents
+- API responses
+- Personal data
+
+All analysis is **local** - no data sent to external services.
+
+## Exit Codes
+
+- `0` - Success
+- `1` - Session directory not found or no sessions
+
+## Related Commands
+
+- `rtk gain` - View actual token savings from RTK usage
+- `rtk init` - Install RTK hook for automatic command rewriting
+- `rtk learn` - Analyze error corrections in Claude Code history

@@ -1,0 +1,466 @@
+---
+title: Installation
+description: Install RTK on macOS, Linux, or Windows in under 5 minutes
+---
+
+# Installation
+
+<Warning>
+**Pre-Installation Check Required**
+
+Always verify if RTK is already installed before proceeding:
+
+```bash
+rtk --version        # Check if installed
+rtk gain             # Verify it's the Token Killer (not Type Kit)
+which rtk            # Check installation path
+```
+
+If `rtk gain` works, you already have the correct RTK. **Skip to [Project Initialization](#project-initialization).**
+</Warning>
+
+## Installation Methods
+
+Choose the method that works best for your platform:
+
+<CardGroup cols={2}>
+  <Card title="Homebrew" icon="beer-mug">
+    **Recommended for macOS/Linux**
+    
+    Easiest installation method with automatic updates.
+  </Card>
+  <Card title="Quick Install Script" icon="terminal">
+    **Fast one-liner for Linux/macOS**
+    
+    Downloads and installs to `~/.local/bin`.
+  </Card>
+  <Card title="Cargo" icon="rust">
+    **For Rust developers**
+    
+    Build from source or install from crates.io.
+  </Card>
+  <Card title="Pre-built Binaries" icon="file-zipper">
+    **Manual installation**
+    
+    Download compiled binaries for all platforms.
+  </Card>
+</CardGroup>
+
+### Homebrew (macOS/Linux)
+
+<Steps>
+  <Step title="Install via Homebrew">
+    ```bash
+    brew install rtk
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    rtk --version
+    # Output: rtk 0.24.0
+    
+    rtk gain
+    # Output: No tracking data yet. (this is correct!)
+    ```
+  </Step>
+</Steps>
+
+<Note>
+If `rtk gain` shows token savings stats OR says "No tracking data yet", you have the **correct** RTK installed.
+
+If you get "command not found", you have the wrong package.
+</Note>
+
+### Quick Install Script (Linux/macOS)
+
+<Steps>
+  <Step title="Run the install script">
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
+    ```
+    
+    This installs RTK to `~/.local/bin/rtk` by default.
+  </Step>
+  
+  <Step title="Add to PATH if needed">
+    If `rtk --version` fails after installation, add `~/.local/bin` to your PATH:
+    
+    ```bash bash
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+    
+    ```bash zsh
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+    source ~/.zshrc
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    rtk gain  # Must show token stats, not "command not found"
+    ```
+  </Step>
+</Steps>
+
+### Cargo (from source)
+
+<Warning>
+**Name Collision on crates.io**
+
+`cargo install rtk` from crates.io might install the **wrong package** (Rust Type Kit instead of Token Killer).
+
+Always install from the GitHub repository or verify with `rtk gain` after installation.
+</Warning>
+
+<CodeGroup>
+```bash From GitHub (Recommended)
+cargo install --git https://github.com/rtk-ai/rtk
+```
+
+```bash From crates.io (Verify After!)
+cargo install rtk
+
+# CRITICAL: Verify you got the right package
+rtk gain  # Must show token stats
+```
+</CodeGroup>
+
+<Steps>
+  <Step title="Install Rust toolchain (if needed)">
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    source $HOME/.cargo/env
+    ```
+  </Step>
+  
+  <Step title="Install RTK">
+    ```bash
+    cargo install --git https://github.com/rtk-ai/rtk
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    rtk --version
+    rtk gain
+    ```
+  </Step>
+</Steps>
+
+### Pre-built Binaries
+
+Download pre-compiled binaries from [GitHub Releases](https://github.com/rtk-ai/rtk/releases):
+
+<CardGroup cols={3}>
+  <Card title="macOS Intel" icon="apple">
+    `rtk-x86_64-apple-darwin.tar.gz`
+  </Card>
+  <Card title="macOS Apple Silicon" icon="apple">
+    `rtk-aarch64-apple-darwin.tar.gz`
+  </Card>
+  <Card title="Linux x86_64" icon="linux">
+    `rtk-x86_64-unknown-linux-gnu.tar.gz`
+  </Card>
+  <Card title="Linux ARM64" icon="linux">
+    `rtk-aarch64-unknown-linux-gnu.tar.gz`
+  </Card>
+  <Card title="Windows x86_64" icon="windows">
+    `rtk-x86_64-pc-windows-msvc.zip`
+  </Card>
+</CardGroup>
+
+<Steps>
+  <Step title="Download the appropriate binary">
+    ```bash macOS (Intel)
+    curl -L -o rtk.tar.gz https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64-apple-darwin.tar.gz
+    ```
+    
+    ```bash macOS (Apple Silicon)
+    curl -L -o rtk.tar.gz https://github.com/rtk-ai/rtk/releases/latest/download/rtk-aarch64-apple-darwin.tar.gz
+    ```
+    
+    ```bash Linux (x86_64)
+    curl -L -o rtk.tar.gz https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64-unknown-linux-gnu.tar.gz
+    ```
+  </Step>
+  
+  <Step title="Extract and install">
+    ```bash
+    tar -xzf rtk.tar.gz
+    mkdir -p ~/.local/bin
+    mv rtk ~/.local/bin/
+    chmod +x ~/.local/bin/rtk
+    ```
+  </Step>
+  
+  <Step title="Add to PATH (if needed)">
+    ```bash
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+  </Step>
+</Steps>
+
+## Project Initialization
+
+After installation, initialize RTK for your AI coding assistant:
+
+### Global Setup (Recommended)
+
+This installs a hook that automatically rewrites commands across **all** Claude Code projects:
+
+```bash
+rtk init --global
+```
+
+<Steps>
+  <Step title="What happens during init">
+    - Installs hook to `~/.claude/hooks/rtk-rewrite.sh`
+    - Creates `~/.claude/RTK.md` (10 lines, minimal context)
+    - Adds `@RTK.md` reference to `~/.claude/CLAUDE.md`
+    - Prompts: "Patch settings.json? [y/N]"
+  </Step>
+  
+  <Step title="Answer the prompt">
+    ```
+    Patch settings.json? [y/N]: y
+    ```
+    
+    This registers the hook in Claude Code's configuration file.
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    rtk init --show
+    ```
+    
+    Should show:
+    ```
+    Hook: ✓ Installed at ~/.claude/hooks/rtk-rewrite.sh (executable)
+    RTK.md: ✓ Exists at ~/.claude/RTK.md
+    CLAUDE.md: ✓ Contains @RTK.md reference
+    settings.json: ✓ Hook registered
+    ```
+  </Step>
+  
+  <Step title="Restart Claude Code">
+    The hook only takes effect after restarting Claude Code.
+  </Step>
+</Steps>
+
+<Note>
+**What is settings.json?**
+
+Claude Code's configuration file (`~/.claude/settings.json`) that registers hooks. The RTK hook transparently rewrites commands like `git status` → `rtk git status` before execution.
+
+RTK creates a backup at `~/.claude/settings.json.bak` before making changes.
+</Note>
+
+### Alternative: Non-Interactive Setup
+
+<CodeGroup>
+```bash Auto-patch (CI/CD)
+# Patch without prompting
+rtk init --global --auto-patch
+```
+
+```bash Manual instructions
+# Print JSON snippet without patching
+rtk init --global --no-patch
+
+# Then manually edit ~/.claude/settings.json
+```
+
+```bash Local project only
+# No hook, just creates ./CLAUDE.md
+rtk init
+```
+</CodeGroup>
+
+## Verification
+
+Test that RTK is working correctly:
+
+<CodeGroup>
+```bash Basic test
+rtk ls .
+# Should show compact tree view
+```
+
+```bash Git test
+rtk git status
+# Should show ultra-compact status
+```
+
+```bash Hook test (if installed)
+git status
+# Should automatically use rtk (after restart)
+```
+
+```bash Analytics test
+rtk gain
+# Should show "No tracking data yet" or stats
+```
+</CodeGroup>
+
+## Troubleshooting
+
+### Command Not Found
+
+**Problem:** `rtk: command not found` after installation
+
+**Solution:**
+
+<Steps>
+  <Step title="Check if rtk is in PATH">
+    ```bash
+    which rtk
+    ls ~/.local/bin/rtk
+    ls ~/.cargo/bin/rtk
+    ```
+  </Step>
+  
+  <Step title="Add to PATH">
+    ```bash bash
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+    
+    ```bash zsh
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+    source ~/.zshrc
+    ```
+  </Step>
+</Steps>
+
+### Wrong RTK Installed
+
+**Problem:** `rtk gain` says "command not found" but `rtk --version` works
+
+**Solution:** You installed Rust Type Kit instead of Token Killer
+
+```bash
+# Uninstall wrong rtk
+cargo uninstall rtk
+
+# Install correct rtk from GitHub
+cargo install --git https://github.com/rtk-ai/rtk
+
+# Verify
+rtk gain  # Should work now
+```
+
+### Hook Not Working
+
+**Problem:** Commands still not using RTK after `rtk init --global`
+
+**Solution:**
+
+<Steps>
+  <Step title="Verify hook is registered">
+    ```bash
+    rtk init --show
+    ```
+  </Step>
+  
+  <Step title="Check settings.json">
+    ```bash
+    cat ~/.claude/settings.json | grep rtk-rewrite
+    ```
+    
+    Should contain:
+    ```json
+    {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "~/.claude/hooks/rtk-rewrite.sh"
+              }
+            ]
+          }
+        ]
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Restart Claude Code">
+    Hooks require a full restart to take effect.
+  </Step>
+</Steps>
+
+### Settings.json Patching Failed
+
+**Problem:** `rtk init --global` fails to patch settings.json
+
+**Solution:**
+
+```bash
+# Check if settings.json is valid JSON
+cat ~/.claude/settings.json | python3 -m json.tool
+
+# If corrupt, restore from backup
+cp ~/.claude/settings.json.bak ~/.claude/settings.json
+
+# Or use manual patching
+rtk init --global --no-patch
+# Then manually edit ~/.claude/settings.json
+```
+
+## Platform-Specific Notes
+
+### macOS
+
+- Homebrew is the recommended installation method
+- Use Apple Silicon binary (`aarch64`) on M1/M2/M3 Macs
+- First run may trigger Gatekeeper - allow in System Preferences → Security
+
+### Linux
+
+- Quick install script works on all distros
+- For DEB-based distros (Ubuntu, Debian): Download `.deb` from releases
+- For RPM-based distros (Fedora, RHEL): Download `.rpm` from releases
+- Ensure `~/.local/bin` is in PATH
+
+### Windows
+
+- Download Windows binary from releases
+- Extract to a permanent location (e.g., `C:\Program Files\rtk`)
+- Add to PATH via System Properties → Environment Variables
+- RTK has limited Windows testing - report issues on GitHub
+
+## Uninstalling
+
+### Complete Removal
+
+```bash
+# Remove global hook and configuration
+rtk init --global --uninstall
+
+# Restart Claude Code
+
+# Uninstall binary
+cargo uninstall rtk        # If installed via cargo
+brew uninstall rtk         # If installed via Homebrew
+rm ~/.local/bin/rtk        # If installed manually
+```
+
+### Restore Settings.json
+
+If something goes wrong:
+
+```bash
+cp ~/.claude/settings.json.bak ~/.claude/settings.json
+```
+
+## Next Steps
+
+<Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+  Follow our 5-minute guide to start saving tokens immediately
+</Card>

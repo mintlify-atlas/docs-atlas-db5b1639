@@ -1,0 +1,360 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for RTK
+---
+
+# Troubleshooting
+
+This guide covers common issues you may encounter with RTK and how to resolve them.
+
+<Warning>
+  If you're experiencing issues with RTK, first verify you have the correct package installed by running `rtk gain`. If this command doesn't exist, you may have the wrong "rtk" package.
+</Warning>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Wrong rtk Package Installed (Type Kit vs Token Killer)">
+    ### Symptom
+    
+    ```bash
+    $ rtk --version
+    rtk 1.0.0  # (or similar)
+    
+    $ rtk gain
+    rtk: 'gain' is not a rtk command. See 'rtk --help'.
+    ```
+    
+    ### Root Cause
+    
+    You installed **Rust Type Kit** (reachingforthejack/rtk) instead of **Rust Token Killer** (rtk-ai/rtk). These are two completely different projects with the same name.
+    
+    | Project | Repository | Purpose | Key Command |
+    |---------|-----------|---------|-------------|
+    | **Rust Token Killer** ✅ | rtk-ai/rtk | LLM token optimizer for Claude Code | `rtk gain` |
+    | **Rust Type Kit** ❌ | reachingforthejack/rtk | Rust codebase query tool | `rtk query` |
+    
+    ### Solution
+    
+    **1. Uninstall the wrong package:**
+    ```bash
+    cargo uninstall rtk
+    ```
+    
+    **2. Install the correct one (Token Killer):**
+    
+    ```bash
+    # Quick Install (Linux/macOS)
+    curl -fsSL https://github.com/rtk-ai/rtk/blob/master/install.sh | sh
+    
+    # Alternative: Manual Installation
+    cargo install --git https://github.com/rtk-ai/rtk
+    ```
+    
+    **3. Verify installation:**
+    ```bash
+    rtk --version
+    rtk gain  # MUST show token savings stats, not error
+    ```
+    
+    <Note>
+      The `rtk gain` command is the definitive way to verify you have the correct package.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Hook Not Working After Install">
+    ### Symptom
+    
+    After running `rtk init -g`, Claude Code still doesn't use rtk automatically.
+    
+    ### Checklist
+    
+    **1. Verify rtk is installed and correct:**
+    ```bash
+    rtk --version
+    rtk gain  # Must show stats
+    ```
+    
+    **2. Check hook is registered:**
+    ```bash
+    rtk init --show
+    ```
+    
+    **3. Verify settings.json manually:**
+    ```bash
+    cat ~/.claude/settings.json | grep rtk-rewrite
+    ```
+    
+    **4. Restart Claude Code (critical step!)**
+    
+    Settings changes require a full restart of Claude Code to take effect.
+    
+    **5. Test with a command:**
+    ```bash
+    git status  # Should use rtk automatically
+    ```
+    
+    ### Manual Hook Installation
+    
+    If automatic installation failed:
+    
+    ```bash
+    # Copy hook to Claude Code hooks directory
+    mkdir -p ~/.claude/hooks
+    cp .claude/hooks/rtk-rewrite.sh ~/.claude/hooks/
+    chmod +x ~/.claude/hooks/rtk-rewrite.sh
+    ```
+    
+    Then add to `~/.claude/settings.json`:
+    ```json
+    {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "/Users/yourname/.claude/hooks/rtk-rewrite.sh"
+              }
+            ]
+          }
+        ]
+      }
+    }
+    ```
+    
+    <Warning>
+      Use **absolute path** in `settings.json`, not `~/.claude/...`
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Settings.json Patching Failed">
+    ### Symptom
+    
+    `rtk init -g` reports an error when trying to patch settings.json.
+    
+    ### Solutions
+    
+    **Check if settings.json is valid JSON:**
+    ```bash
+    cat ~/.claude/settings.json | python3 -m json.tool
+    ```
+    
+    **Use manual patching:**
+    ```bash
+    rtk init -g --no-patch  # Prints JSON snippet
+    # Then manually edit ~/.claude/settings.json
+    ```
+    
+    **Restore from backup:**
+    ```bash
+    cp ~/.claude/settings.json.bak ~/.claude/settings.json
+    ```
+    
+    **Check permissions:**
+    ```bash
+    ls -la ~/.claude/settings.json
+    chmod 644 ~/.claude/settings.json
+    ```
+    
+    <Note>
+      RTK creates `~/.claude/settings.json.bak` before making changes. You can always restore from this backup.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Command Not Found: rtk">
+    ### Symptom
+    
+    ```bash
+    $ cargo install --path . --force
+       Compiling rtk v0.7.1
+        Finished release [optimized] target(s)
+      Installing ~/.cargo/bin/rtk
+    
+    $ rtk --version
+    zsh: command not found: rtk
+    ```
+    
+    ### Root Cause
+    
+    `~/.cargo/bin` is not in your PATH.
+    
+    ### Solution
+    
+    **1. Check if cargo bin is in PATH:**
+    ```bash
+    echo $PATH | grep -o '[^:]*\.cargo[^:]*'
+    ```
+    
+    **2. If not found, add to PATH:**
+    
+    For **bash** (`~/.bashrc`):
+    ```bash
+    export PATH="$HOME/.cargo/bin:$PATH"
+    ```
+    
+    For **zsh** (`~/.zshrc`):
+    ```bash
+    export PATH="$HOME/.cargo/bin:$PATH"
+    ```
+    
+    For **fish** (`~/.config/fish/config.fish`):
+    ```fish
+    set -gx PATH $HOME/.cargo/bin $PATH
+    ```
+    
+    **3. Reload shell config:**
+    ```bash
+    source ~/.bashrc  # or ~/.zshrc or restart terminal
+    ```
+    
+    **4. Verify:**
+    ```bash
+    which rtk
+    rtk --version
+    rtk gain
+    ```
+  </Accordion>
+
+  <Accordion title="RTK Not Working in Claude Code">
+    ### Symptom
+    
+    Claude Code doesn't seem to be using rtk, outputs are verbose.
+    
+    ### Checklist
+    
+    **1. Verify rtk is installed and correct:**
+    ```bash
+    rtk --version
+    rtk gain  # Must show stats
+    ```
+    
+    **2. Initialize rtk for Claude Code:**
+    ```bash
+    # Global (all projects) - RECOMMENDED
+    rtk init --global
+    
+    # Per-project
+    cd /your/project
+    rtk init
+    ```
+    
+    **3. Verify CLAUDE.md or RTK.md file exists:**
+    ```bash
+    # Check global
+    cat ~/.claude/RTK.md | head -5
+    
+    # Check project
+    cat ./CLAUDE.md | grep rtk
+    ```
+    
+    **4. Install auto-rewrite hook (recommended):**
+    
+    ```bash
+    rtk init -g
+    # → Installs hook + RTK.md automatically
+    # → Follow printed instructions to add hook to ~/.claude/settings.json
+    # → Restart Claude Code
+    
+    # Verify installation
+    rtk init --show  # Should show "✅ Hook: executable, with guards"
+    ```
+    
+    **5. Test it works:**
+    ```bash
+    rtk git status  # Should show ultra-compact output
+    ```
+  </Accordion>
+
+  <Accordion title="Compilation Errors During Installation">
+    ### Symptom
+    
+    ```bash
+    $ cargo install --path .
+    error: failed to compile rtk v0.7.1
+    ```
+    
+    ### Solutions
+    
+    **1. Update Rust toolchain:**
+    ```bash
+    rustup update stable
+    rustup default stable
+    ```
+    
+    **2. Clean and rebuild:**
+    ```bash
+    cargo clean
+    cargo build --release
+    cargo install --path . --force
+    ```
+    
+    **3. Check Rust version (minimum required):**
+    ```bash
+    rustc --version  # Should be 1.70+ for most features
+    ```
+    
+    **4. If still fails, report issue:**
+    - GitHub: https://github.com/rtk-ai/rtk/issues
+  </Accordion>
+
+  <Accordion title="Uninstall Didn't Remove Everything">
+    ### Symptom
+    
+    RTK traces remain after running `rtk init -g --uninstall`.
+    
+    ### Manual Cleanup
+    
+    ```bash
+    # Remove hook
+    rm ~/.claude/hooks/rtk-rewrite.sh
+    
+    # Remove RTK.md
+    rm ~/.claude/RTK.md
+    
+    # Remove @RTK.md reference
+    nano ~/.claude/CLAUDE.md  # Delete @RTK.md line
+    
+    # Remove from settings.json
+    nano ~/.claude/settings.json  # Remove RTK hook entry
+    
+    # Or restore from backup
+    cp ~/.claude/settings.json.bak ~/.claude/settings.json
+    ```
+    
+    **For local projects:** Manually remove RTK instructions from `./CLAUDE.md`
+    
+    **Binary removal:**
+    ```bash
+    # If installed via cargo
+    cargo uninstall rtk
+    
+    # If installed via package manager
+    brew uninstall rtk          # macOS Homebrew
+    sudo apt remove rtk         # Debian/Ubuntu
+    sudo dnf remove rtk         # Fedora/RHEL
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Need More Help?
+
+**Run the diagnostic script:**
+```bash
+# From the rtk repository root
+bash scripts/check-installation.sh
+```
+
+This script will check:
+- ✅ RTK installed and in PATH
+- ✅ Correct version (Token Killer, not Type Kit)
+- ✅ Available features (pnpm, vitest, next, etc.)
+- ✅ Claude Code integration (CLAUDE.md files)
+- ✅ Auto-rewrite hook status
+
+The script provides specific fix commands for any issues found.
+
+**Report issues:**
+- GitHub: https://github.com/rtk-ai/rtk/issues
+- Email: contact@rtk-ai.app

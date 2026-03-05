@@ -1,0 +1,261 @@
+---
+title: "How RTK Works"
+description: "Understanding RTK's architecture and proxy pattern"
+---
+
+RTK (Rust Token Killer) operates as a **transparent CLI proxy** that sits between your LLM agent and command-line tools. It intercepts command output, applies intelligent filtering, and returns only the essential information—saving 60-90% of tokens.
+
+## Architecture Overview
+
+RTK uses a **proxy pattern** with three core layers:
+
+<Steps>
+  <Step title="Command Interception">
+    When you run `rtk git status`, RTK receives the command and routes it to the appropriate module (git.rs, lint_cmd.rs, etc.)
+  </Step>
+  
+  <Step title="Execution & Filtering">
+    RTK executes the real command (`git status`), captures the raw output, and applies command-specific filtering strategies
+  </Step>
+  
+  <Step title="Token Tracking">
+    The filtered output is returned to your LLM, while RTK records token savings to SQLite for analytics
+  </Step>
+</Steps>
+
+## Proxy Pattern Flow
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                      rtk - Token Optimization Proxy                    │
+└────────────────────────────────────────────────────────────────────────┘
+
+User Input          CLI Layer           Router            Module Layer
+──────────          ─────────           ──────            ────────────
+
+$ rtk git log    ─→  Clap Parser   ─→   Commands    ─→   git::run()
+  -v --oneline       (main.rs)          enum match
+                     • Parse args                         Execute: git log
+                     • Extract flags                      Capture output
+                     • Route command                            ↓
+                                                           Filter/Compress
+                                                                 ↓
+$ 3 commits      ←─  Terminal      ←─   Format      ←─   Compact Stats
+  +142/-89           colored            optimized         (90% reduction)
+                     output                                     ↓
+                                                           tracking::track()
+                                                                 ↓
+                                                           SQLite INSERT
+                                                           (~/.local/share/rtk/)
+```
+
+## Hook-Based Command Rewriting
+
+<Note>
+  The **recommended deployment mode** uses a Claude Code PreToolUse hook for 100% transparent command rewriting. Claude never sees the rewrite—it just gets optimized output.
+</Note>
+
+RTK's hook intercepts commands **before execution** and rewrites them automatically:
+
+```
+Claude Code types:  git status
+                         │
+                  ┌──────▼──────────────────────┐
+                  │  ~/.claude/settings.json     │
+                  │  PreToolUse hook registered  │
+                  └──────┬──────────────────────┘
+                         │
+                  ┌──────▼──────────────────────┐
+                  │  rtk-rewrite.sh              │
+                  │  "git status"                │
+                  │    →  "rtk git status"       │  transparent rewrite
+                  └──────┬──────────────────────┘
+                         │
+                  ┌──────▼──────────────────────┐
+                  │  RTK (Rust binary)           │
+                  │  executes real git status    │
+                  │  filters output              │
+                  └──────┬──────────────────────┘
+                         │
+Claude receives:  "3 modified, 1 untracked ✓"
+                  ↑ not 50 lines of raw git output
+```
+
+### Hook Installation
+
+The hook is installed automatically with `rtk init -g`:
+
+<Accordion title="What gets installed?">
+  - `~/.claude/hooks/rtk-rewrite.sh` - Shell script with command detection
+  - `~/.claude/RTK.md` - Minimal context hint (10 lines, 99.5% token savings vs full injection)
+  - `~/.claude/settings.json` - Hook registry (with backup to settings.json.bak)
+  - `@RTK.md` reference in `~/.claude/CLAUDE.md`
+</Accordion>
+
+**Two hook strategies:**
+
+<CardGroup cols={2}>
+  <Card title="Auto-Rewrite (default)" icon="bolt">
+    - Intercepts and modifies commands before execution
+    - 100% adoption (forced)
+    - Zero context overhead
+    - Best for: production workflows
+  </Card>
+  
+  <Card title="Suggest (non-intrusive)" icon="lightbulb">
+    - Emits system reminder hints
+    - ~70-85% adoption (Claude decides)
+    - Minimal context overhead
+    - Best for: learning, auditing
+  </Card>
+</CardGroup>
+
+## Six-Phase Execution Lifecycle
+
+Every RTK command follows this flow:
+
+### Phase 1: PARSE
+```bash
+$ rtk git log --oneline -5 -v
+```
+Clap Parser extracts:
+- Command: `Commands::Git`
+- Args: `["log", "--oneline", "-5"]`
+- Flags: `verbose = 1`
+
+### Phase 2: ROUTE
+main.rs matches `Commands::Git` and calls `git::run(args, verbose)`
+
+### Phase 3: EXECUTE
+```rust
+std::process::Command::new("git")
+    .args(["log", "--oneline", "-5"])
+    .output()?;
+```
+Captures stdout (500 chars), stderr (empty), exit_code (0)
+
+### Phase 4: FILTER
+`git::format_git_output(stdout, "log", verbose)` applies:
+- **Strategy**: Stats Extraction
+- Count commits: 5
+- Extract stats: +142/-89
+- **Compress**: "5 commits, +142/-89" (20 chars, 96% reduction)
+
+### Phase 5: PRINT
+```rust
+if verbose > 0 {
+    eprintln!("Git log summary:");  // Debug
+}
+println!("{}", colored_output);     // User output
+```
+Terminal shows: "5 commits, +142/-89 ✓"
+
+### Phase 6: TRACK
+```rust
+tracking::track(
+    original_cmd: "git log --oneline -5",
+    rtk_cmd: "rtk git log --oneline -5",
+    input: &raw_output,    // 500 chars
+    output: &filtered      // 20 chars
+);
+```
+SQLite INSERT:
+- `input_tokens`: 125 (500 / 4)
+- `output_tokens`: 5 (20 / 4)
+- `savings_pct`: 96.0
+
+## Exit Code Preservation
+
+<Note>
+  **Critical for CI/CD**: RTK always preserves exit codes from underlying tools. If `git push` fails with exit code 1, RTK exits with code 1.
+</Note>
+
+```rust
+if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    eprintln!("{}", stderr);
+    std::process::exit(output.status.code().unwrap_or(1));
+}
+```
+
+**Why this matters:**
+- CI/CD pipelines rely on exit codes for build success/failure
+- Pre-commit hooks need accurate failure signals
+- Git workflows require proper exit code propagation
+
+## Fallback Behavior on Errors
+
+RTK follows a **fail-safe design**: if filtering fails, it falls back to raw command execution.
+
+```rust
+match get_filter(cmd) {
+    Some(filter) => match filter.apply(cmd, args) {
+        Ok(output) => println!("{}", output),
+        Err(e) => {
+            eprintln!("Filter failed: {}, falling back to raw", e);
+            execute_raw(cmd, args)?;
+        }
+    },
+    None => execute_raw(cmd, args)?,
+}
+```
+
+**Users always see output**—even if RTK breaks. This guarantees zero downtime.
+
+## Design Principles
+
+<CardGroup cols={2}>
+  <Card title="Single Responsibility" icon="cube">
+    Each module handles one command type (git.rs for Git, lint_cmd.rs for ESLint, etc.)
+  </Card>
+  
+  <Card title="Minimal Overhead" icon="gauge">
+    ~5-15ms proxy overhead per command (measured with hyperfine)
+  </Card>
+  
+  <Card title="Exit Code Preservation" icon="circle-check">
+    CI/CD reliability through proper exit code propagation
+  </Card>
+  
+  <Card title="Fail-Safe" icon="shield">
+    If filtering fails, fall back to original output
+  </Card>
+  
+  <Card title="Transparent" icon="eye">
+    Users can always see raw output with `-v` flags
+  </Card>
+  
+  <Card title="Zero Config" icon="sliders">
+    Works out of the box, no setup required (hook optional)
+  </Card>
+</CardGroup>
+
+## Performance Characteristics
+
+| Metric | Target | Verification |
+|--------|--------|-------------|
+| **Startup time** | &lt;10ms | `hyperfine 'rtk git status'` |
+| **Memory overhead** | &lt;5MB resident | `/usr/bin/time -l rtk git status` |
+| **Token savings** | 60-90% | Measured on real workflows |
+| **Binary size** | &lt;5MB stripped | Release build |
+
+**Why &lt;10ms matters:** Claude Code users expect CLI tools to be instant. Any perceptible delay breaks the developer flow.
+
+## Verbosity Levels
+
+RTK supports three verbosity levels for debugging:
+
+| Flag | Behavior |
+|------|----------|
+| (none) | Compact output only |
+| `-v` | + Debug messages (`eprintln!` statements) |
+| `-vv` | + Command being executed |
+| `-vvv` | + Raw output before filtering |
+
+**Example:**
+```bash
+rtk git diff        # Compact stats only
+rtk git diff -v     # + "Git diff summary:"
+rtk git diff -vv    # + "Executing: git diff"
+rtk git diff -vvv   # + Full raw git output
+```

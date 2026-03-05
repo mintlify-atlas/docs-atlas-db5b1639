@@ -1,0 +1,139 @@
+---
+title: "Commands Overview"
+description: "Complete guide to RTK's token-optimized command categories"
+---
+
+## What is RTK?
+
+RTK (Rust Token Killer) is a high-performance CLI proxy that minimizes LLM token consumption by filtering and compressing command outputs. It achieves **60-90% token savings** on common development operations through:
+
+- **Smart Filtering**: Removes noise (comments, whitespace, boilerplate)
+- **Grouping**: Aggregates similar items (files by directory, errors by type)
+- **Truncation**: Keeps relevant context, cuts redundancy
+- **Deduplication**: Collapses repeated log lines with counts
+
+## Command Categories
+
+<CardGroup cols={3}>
+  <Card title="File Operations" icon="folder" href="/commands/file-operations">
+    Directory listing, file reading, search, and find operations
+  </Card>
+  <Card title="Git" icon="code-branch" href="/commands/git">
+    All git operations with ultra-compact output
+  </Card>
+  <Card title="Testing" icon="flask" href="/commands/testing">
+    Test runners showing failures only (90% savings)
+  </Card>
+  <Card title="JavaScript/TypeScript" icon="js" href="/commands/javascript">
+    Modern JS stack: ESLint, TypeScript, Next.js, Vitest, Playwright
+  </Card>
+  <Card title="Python" icon="python" href="/commands/python">
+    Ruff, pytest, pip, mypy with JSON/text parsers
+  </Card>
+  <Card title="Go" icon="golang" href="/commands/go">
+    Go test, build, vet, golangci-lint with NDJSON streaming
+  </Card>
+  <Card title="Containers" icon="docker" href="/commands/containers">
+    Docker and Kubernetes with compact container lists
+  </Card>
+  <Card title="GitHub" icon="github" href="/commands/github">
+    GitHub CLI with compact PR/issue/run views
+  </Card>
+</CardGroup>
+
+## Global Flags
+
+All RTK commands support these global flags:
+
+<ParamField path="-v, --verbose" type="flag">
+  Increase verbosity level. Use multiple times for more detail:
+  - `-v`: Basic debug info
+  - `-vv`: Detailed execution traces
+  - `-vvv`: Maximum verbosity
+</ParamField>
+
+<ParamField path="-u, --ultra-compact" type="flag">
+  Enable ultra-compact mode:
+  - ASCII icons instead of Unicode emoji
+  - Inline format with minimal whitespace
+  - Extra token savings (10-15% on top of default)
+</ParamField>
+
+## Common Patterns
+
+### Exit Code Preservation
+
+All RTK commands preserve the original command's exit code, making them safe for CI/CD:
+
+```bash
+# CI pipeline example
+rtk cargo test || exit 1
+rtk go test ./... || exit 1
+rtk pytest || exit 1
+```
+
+### Fallback to Raw Commands
+
+If RTK's filter fails, it automatically falls back to raw command execution:
+
+```bash
+# If filter crashes, you still get output
+rtk git status  # Falls back to raw git status on error
+```
+
+### Tee Output Recovery
+
+On command failure, RTK saves full unfiltered output to `~/.local/share/rtk/tee/` so LLMs can read details without re-running:
+
+```bash
+rtk cargo test  # Fails
+# Output: "✗ 2 tests failed"
+# [full output: ~/.local/share/rtk/tee/1707753600_cargo_test.log]
+```
+
+LLMs can then read the tee file instead of re-executing the test suite.
+
+### Proxy Mode
+
+Bypass RTK filtering but still track usage metrics:
+
+```bash
+rtk proxy git log --oneline -20  # Full output, tracked in metrics
+rtk proxy curl https://api.example.com  # Works with any command
+```
+
+## Token Savings by Operation
+
+Typical 30-minute Claude Code session:
+
+| Operation | Frequency | Standard | RTK | Savings |
+|-----------|-----------|----------|-----|----------|
+| `ls` / `tree` | 10× | 2,000 | 400 | **-80%** |
+| `cat` / `read` | 20× | 40,000 | 12,000 | **-70%** |
+| `grep` / `rg` | 8× | 16,000 | 3,200 | **-80%** |
+| `git status` | 10× | 3,000 | 600 | **-80%** |
+| `git diff` | 5× | 10,000 | 2,500 | **-75%** |
+| `npm test` | 5× | 25,000 | 2,500 | **-90%** |
+| `pytest` | 4× | 8,000 | 800 | **-90%** |
+| `docker ps` | 3× | 900 | 180 | **-80%** |
+| **Total** | | **~118,000** | **~23,900** | **-80%** |
+
+## Performance Targets
+
+RTK maintains strict performance constraints:
+
+- **Startup time**: &lt;10ms (zero-overhead CLI experience)
+- **Memory**: &lt;5MB resident
+- **Binary size**: &lt;5MB stripped
+- **Token savings**: 60-90% across all commands
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="File Operations" icon="folder" href="/commands/file-operations">
+    Start with file operations (ls, read, grep, find)
+  </Card>
+  <Card title="Git Commands" icon="code-branch" href="/commands/git">
+    Explore git command optimizations
+  </Card>
+</CardGroup>

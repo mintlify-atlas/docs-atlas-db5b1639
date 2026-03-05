@@ -1,0 +1,533 @@
+---
+title: "Configuration"
+description: "Customize RTK behavior through config files and environment variables"
+icon: "sliders"
+---
+
+## Configuration File
+
+RTK reads configuration from `~/.config/rtk/config.toml`. The file is optional — RTK uses sensible defaults if not present.
+
+### Location
+
+```bash
+~/.config/rtk/config.toml
+```
+
+On macOS/Linux, this resolves to:
+- macOS: `/Users/<username>/.config/rtk/config.toml`
+- Linux: `/home/<username>/.config/rtk/config.toml`
+
+### View Current Config
+
+```bash
+rtk config
+```
+
+Output:
+```
+Config: /Users/you/.config/rtk/config.toml
+
+[tracking]
+enabled = true
+history_days = 90
+
+[display]
+colors = true
+emoji = true
+max_width = 120
+
+[filters]
+ignore_dirs = [".git", "node_modules", "target", "__pycache__", ".venv", "vendor"]
+ignore_files = ["*.lock", "*.min.js", "*.min.css"]
+
+[tee]
+enabled = true
+mode = "failures"
+max_files = 20
+max_file_size = 1048576
+```
+
+### Create Default Config
+
+```bash
+rtk config --create
+```
+
+This writes the default configuration to `~/.config/rtk/config.toml` if it doesn't exist.
+
+## Configuration Sections
+
+### Tracking
+
+Controls token savings tracking and analytics.
+
+```toml
+[tracking]
+enabled = true          # Enable/disable tracking
+history_days = 90       # Retention period (days)
+database_path = "/custom/path/history.db"  # Optional: custom DB location
+```
+
+#### Options
+
+- **enabled** (boolean): Enable token tracking. Default: `true`
+- **history_days** (integer): How long to retain tracking data. Default: `90`
+- **database_path** (string): Custom database location. Default: `~/.local/share/rtk/history.db`
+
+<Note>
+Disabling tracking (`enabled = false`) disables `rtk gain` and all analytics commands.
+</Note>
+
+### Display
+
+Controls output formatting.
+
+```toml
+[display]
+colors = true           # ANSI colors in output
+emoji = true            # Emoji in output (✅ ❌ ✓)
+max_width = 120         # Max line width for wrapping
+```
+
+#### Options
+
+- **colors** (boolean): Use ANSI colors. Default: `true`
+- **emoji** (boolean): Use emoji in output. Default: `true`
+- **max_width** (integer): Max line width before wrapping. Default: `120`
+
+### Filters
+
+Controls which files/directories to ignore in `rtk ls`, `rtk grep`, etc.
+
+```toml
+[filters]
+ignore_dirs = [
+  ".git",
+  "node_modules",
+  "target",
+  "__pycache__",
+  ".venv",
+  "vendor"
+]
+ignore_files = [
+  "*.lock",
+  "*.min.js",
+  "*.min.css"
+]
+```
+
+#### Options
+
+- **ignore_dirs** (array of strings): Directory names to skip
+- **ignore_files** (array of strings): File patterns to skip (supports `*` wildcards)
+
+### Tee
+
+Controls full output recovery for commands that fail.
+
+```toml
+[tee]
+enabled = true          # Enable tee feature
+mode = "failures"       # When to save: "failures", "always", "never"
+max_files = 20          # Max files to keep (oldest rotated out)
+max_file_size = 1048576 # 1MB max per file
+# directory = "/custom/path"  # Optional: custom tee directory
+```
+
+#### Options
+
+- **enabled** (boolean): Enable tee feature. Default: `true`
+- **mode** (string): When to save output:
+  - `"failures"`: Only on non-zero exit code (default)
+  - `"always"`: Save all command outputs
+  - `"never"`: Disable tee completely
+- **max_files** (integer): Max files to keep. Default: `20`
+- **max_file_size** (integer): Max bytes per file. Default: `1048576` (1MB)
+- **directory** (string): Custom tee directory. Default: `~/.local/share/rtk/tee/`
+
+<Note>
+Tee saves raw unfiltered output to a file when commands fail, so LLMs can read the full error instead of re-running the command.
+</Note>
+
+## Environment Variables
+
+Environment variables override config file settings.
+
+### Database Path
+
+**RTK_DB_PATH**: Override tracking database location.
+
+```bash
+export RTK_DB_PATH="/tmp/rtk-test.db"
+rtk gain  # Uses /tmp/rtk-test.db instead of default
+```
+
+**Priority**: `RTK_DB_PATH` > `config.toml:tracking.database_path` > default location
+
+### Tee Configuration
+
+**RTK_TEE**: Enable/disable tee feature.
+
+```bash
+export RTK_TEE=0
+rtk cargo test  # Tee disabled for this session
+```
+
+**RTK_TEE_DIR**: Override tee output directory.
+
+```bash
+export RTK_TEE_DIR="/tmp/rtk-tee"
+rtk cargo test  # Saves tee files to /tmp/rtk-tee/
+```
+
+### Hook Audit Logging
+
+**RTK_HOOK_AUDIT**: Enable hook audit logging.
+
+```bash
+export RTK_HOOK_AUDIT=1
+# All hook invocations logged to ~/.local/share/rtk/hook-audit.log
+```
+
+**RTK_AUDIT_DIR**: Override audit log directory.
+
+```bash
+export RTK_AUDIT_DIR="/tmp/rtk-audit"
+export RTK_HOOK_AUDIT=1
+# Logs to /tmp/rtk-audit/hook-audit.log
+```
+
+## Custom Database Path
+
+By default, RTK stores tracking data in `~/.local/share/rtk/history.db`. You can customize this in two ways:
+
+### Method 1: Environment Variable
+
+```bash
+export RTK_DB_PATH="/path/to/custom.db"
+```
+
+Add to shell profile (`.bashrc`, `.zshrc`) to persist:
+
+```bash
+echo 'export RTK_DB_PATH="/path/to/custom.db"' >> ~/.bashrc
+```
+
+### Method 2: Config File
+
+Edit `~/.config/rtk/config.toml`:
+
+```toml
+[tracking]
+database_path = "/path/to/custom.db"
+```
+
+### Priority Order
+
+1. **RTK_DB_PATH** environment variable (highest priority)
+2. **config.toml** `tracking.database_path` field
+3. **Default**: `~/.local/share/rtk/history.db`
+
+### Use Cases
+
+- **Per-project tracking**: `export RTK_DB_PATH="./rtk-project.db"`
+- **Shared team analytics**: `export RTK_DB_PATH="/mnt/shared/rtk.db"`
+- **Testing**: `export RTK_DB_PATH="/tmp/rtk-test.db"`
+
+## Tee Configuration
+
+When RTK filters command output, LLM agents lose failure details (stack traces, assertion messages). The **tee** feature saves raw output to a file on failure.
+
+### How It Works
+
+On command failure (exit code ≠ 0), RTK:
+
+1. Writes full unfiltered output to `~/.local/share/rtk/tee/<timestamp>_<cmd>.log`
+2. Prints a hint: `[full output: ~/.local/share/rtk/tee/1707753600_cargo_test.log]`
+3. LLM reads the file instead of re-running the command
+
+**Result**: Token savings without losing error context.
+
+### Configuration
+
+Edit `~/.config/rtk/config.toml`:
+
+```toml
+[tee]
+enabled = true          # Enable tee feature
+mode = "failures"       # "failures" (default), "always", "never"
+max_files = 20          # Max files to keep (FIFO rotation)
+max_file_size = 1048576 # 1MB max per file
+# directory = "/custom/path"  # Optional: custom directory
+```
+
+### Modes
+
+<CodeGroup>
+```toml Failures Only (Default)
+[tee]
+mode = "failures"  # Only save output when exit code != 0
+```
+
+```toml Always
+[tee]
+mode = "always"  # Save all command outputs (use for debugging)
+```
+
+```toml Never
+[tee]
+mode = "never"  # Disable tee completely
+```
+</CodeGroup>
+
+### Environment Overrides
+
+```bash
+# Disable tee for this session
+export RTK_TEE=0
+rtk cargo test
+
+# Custom tee directory
+export RTK_TEE_DIR="/tmp/rtk-tee"
+rtk cargo test
+```
+
+### Supported Commands
+
+Tee works with:
+
+- **Cargo**: `build`, `test`, `clippy`, `check`, `install`, `nextest`
+- **JavaScript**: `vitest`, `playwright`, `tsc`, `lint`, `prettier`
+- **Python**: `pytest`, `ruff`, `mypy`
+- **Go**: `go test`, `go build`, `go vet`, `golangci-lint`
+- **Generic**: `rtk test`, `rtk err`
+
+### File Rotation
+
+Tee files are automatically rotated:
+
+- **max_files**: Oldest files deleted when limit reached
+- **max_file_size**: Outputs larger than limit are truncated
+
+Default: 20 files, 1MB each (20MB total).
+
+## Installation Modes and Flags
+
+RTK supports multiple installation modes for Claude Code integration.
+
+### Installation Modes
+
+<CodeGroup>
+```bash Hook-first (Recommended)
+rtk init --global
+# Installs: hook + RTK.md + @RTK.md + settings.json
+# Context: 10 tokens
+```
+
+```bash Legacy
+rtk init --global --claude-md
+# Installs: full injection into CLAUDE.md
+# Context: 2000 tokens
+```
+
+```bash Hook-only
+rtk init --global --hook-only
+# Installs: hook only, no RTK.md
+# Context: 0 tokens
+```
+
+```bash Local
+rtk init
+# Installs: full injection into ./CLAUDE.md
+# Scope: current project only
+```
+</CodeGroup>
+
+### Settings.json Patching Flags
+
+Control how `rtk init --global` handles `~/.claude/settings.json`:
+
+```bash
+rtk init -g                 # Default: prompt [y/N]
+rtk init -g --auto-patch    # Patch immediately without prompting
+rtk init -g --no-patch      # Skip patching, print manual instructions
+```
+
+### Mode Flags
+
+```bash
+rtk init -g --claude-md     # Legacy: full 137-line injection
+rtk init -g --hook-only     # Hook only, no RTK.md
+```
+
+### Uninstall Flag
+
+```bash
+rtk init -g --uninstall     # Remove all RTK artifacts
+```
+
+Removes:
+- `~/.claude/hooks/rtk-rewrite.sh`
+- `~/.claude/RTK.md`
+- `@RTK.md` reference from `~/.claude/CLAUDE.md`
+- RTK hook entry from `~/.claude/settings.json`
+
+**Restart Claude Code** after uninstalling.
+
+### Verification
+
+Check current installation:
+
+```bash
+rtk init --show
+```
+
+Output shows:
+- Hook status (installed, executable, guards present)
+- RTK.md status
+- Integrity verification
+- CLAUDE.md status (global and local)
+- settings.json status
+
+## Uninstall Procedure
+
+### Complete Removal
+
+```bash
+rtk init --global --uninstall
+```
+
+This removes:
+
+1. ✅ Hook script (`~/.claude/hooks/rtk-rewrite.sh`)
+2. ✅ Integrity hash (SHA-256 baseline for hook verification)
+3. ✅ RTK.md (`~/.claude/RTK.md`)
+4. ✅ @RTK.md reference from `~/.claude/CLAUDE.md`
+5. ✅ Hook entry from `~/.claude/settings.json`
+
+**Restart Claude Code** after uninstalling.
+
+### Restore from Backup
+
+If uninstall causes issues, restore settings.json from backup:
+
+```bash
+cp ~/.claude/settings.json.bak ~/.claude/settings.json
+```
+
+Backups are created automatically by `rtk init --global`.
+
+### Local Projects
+
+For local installations (`rtk init` without `--global`):
+
+```bash
+# Manually remove RTK instructions from CLAUDE.md
+rm CLAUDE.md  # or edit to remove RTK block
+```
+
+### Binary Removal
+
+To remove the RTK binary:
+
+<CodeGroup>
+```bash Homebrew
+brew uninstall rtk
+```
+
+```bash Cargo
+cargo uninstall rtk
+```
+
+```bash Debian/Ubuntu
+sudo apt remove rtk
+```
+
+```bash Fedora/RHEL
+sudo dnf remove rtk
+```
+
+```bash Manual
+rm ~/.local/bin/rtk
+```
+</CodeGroup>
+
+### Data Removal
+
+RTK stores data in:
+
+- **Tracking database**: `~/.local/share/rtk/history.db`
+- **Tee files**: `~/.local/share/rtk/tee/`
+- **Config file**: `~/.config/rtk/config.toml`
+- **Hook audit logs**: `~/.local/share/rtk/hook-audit.log`
+
+To remove all data:
+
+```bash
+rm -rf ~/.local/share/rtk
+rm -rf ~/.config/rtk
+```
+
+## Configuration Examples
+
+### Example 1: Minimal Context, No Tracking
+
+```toml
+[tracking]
+enabled = false  # Disable all analytics
+
+[tee]
+mode = "never"  # No tee files
+```
+
+Use case: CI/CD, no persistent state.
+
+### Example 2: Maximum Debugging
+
+```toml
+[tracking]
+enabled = true
+
+[tee]
+mode = "always"  # Save all outputs
+max_files = 100  # Keep more files
+```
+
+Environment:
+
+```bash
+export RTK_HOOK_AUDIT=1  # Enable hook audit logging
+```
+
+Use case: Debugging RTK behavior, investigating filter issues.
+
+### Example 3: Team Shared Analytics
+
+```toml
+[tracking]
+database_path = "/mnt/shared/team-rtk.db"
+```
+
+Use case: Centralized token savings analytics for a team.
+
+### Example 4: Per-Project Tracking
+
+```bash
+# In project root:
+export RTK_DB_PATH="./rtk-project.db"
+rtk gain  # Shows project-specific analytics
+```
+
+Use case: Track token savings per-project without mixing data.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Claude Code Setup" icon="robot" href="/integration/claude-code">
+    Install RTK hook for Claude Code
+  </Card>
+  <Card title="Hook Architecture" icon="gear" href="/integration/hooks">
+    Learn how auto-rewrite hooks work
+  </Card>
+</CardGroup>
